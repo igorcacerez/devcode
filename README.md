@@ -27,6 +27,28 @@ Hoje muitos alunos não escrevem código: eles copiam do ChatGPT e colam na IDE.
 - ❓ **Pergunta antes de executar:** ao rodar o código, a IDE faz uma pergunta sobre o que o aluno escreveu (lógica, sintaxe, estruturas). **Só roda se ele acertar.**
 - 🗑️ **Arquivo de código colado na pasta é apagado:** se o aluno baixar um `index.html` do GPT e colar na pasta do projeto, o DEV CODE detecta e exclui. Imagens, áudios, vídeos e bancos `.fdb` são permitidos.
 
+## Demonstração
+
+<p align="center">
+  <img src="docs/screenshots/tela-inicial.png" alt="Tela Inicial do DEV CODE: criar projeto Python, Colab, HTML, React, React Native ou baixar do Git" width="900"><br>
+  <em>Tela Inicial: o aluno cria um projeto ou baixa o seu do GitHub</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/colab-atividade.png" alt="Notebook estilo Colab com uma atividade de lógica: número par ou ímpar" width="900"><br>
+  <em>Projeto Colab: atividade de lógica com células de texto e de código, executadas pelo kernel Python do DEV CODE</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/pergunta-antes-de-executar.png" alt="Pergunta do DEV CODE antes de executar a célula: qual estrutura é usada na linha 5" width="720"><br>
+  <em>Antes de executar, o DEV CODE pergunta sobre o próprio código. Só roda se o aluno acertar.</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/colab-notebook.png" alt="Novo projeto Colab criado com as instruções de uso" width="900"><br>
+  <em>Novo projeto Colab: já vem com as instruções e o ambiente Python (.venv) pronto</em>
+</p>
+
 ## Como funciona
 
 ### Tela Inicial
