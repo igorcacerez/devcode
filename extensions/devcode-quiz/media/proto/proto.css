@@ -77,3 +77,26 @@ html, body { margin: 0; height: 100%; overflow: hidden; font-family: var(--vscod
 .marquee { position: absolute; border: 1px solid var(--sel); background: #0D99FF14; }
 .hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); background: #2C2C2Ce6; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; pointer-events: none; }
 .error { padding: 40px; color: var(--red); font-size: 14px; }
+
+/* ---------- estilos completos (styles.js) ---------- */
+.text-content[contenteditable=true] { outline: 2px solid var(--sel); cursor: text; user-select: text; }
+.row.four { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.row.stop { grid-template-columns: 1fr 74px auto; }
+.field .unit { color: var(--muted); font-size: 11px; flex: none; }
+.field .hex { font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; flex: 1; }
+.field input.alpha { flex: none; width: 38px; text-align: right; }
+.field input[type=range] { flex: 1; min-width: 0; accent-color: var(--red); }
+.label-row { padding: 2px 12px 4px; color: var(--muted); font-size: 11px; }
+.btn.mini { padding: 2px 7px; }
+.shadow-box { border: 1px dashed var(--border); border-radius: 6px; margin: 0 10px 8px; padding-top: 6px; }
+.font-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.font-btn .caret { color: var(--muted); font-family: var(--vscode-font-family); }
+.font-pop { position: fixed; width: 300px; height: 400px; background: var(--vscode-editorWidget-background, #fff); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 28px #0003; z-index: 100; display: flex; flex-direction: column; overflow: hidden; }
+.font-head { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+.font-head input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font: inherit; background: var(--vscode-input-background, #fff); color: inherit; }
+.font-head select { border: 1px solid var(--border); border-radius: 5px; font: inherit; background: var(--vscode-input-background, #fff); color: inherit; }
+.font-list { flex: 1; overflow: auto; padding: 4px; }
+.font-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 7px 8px; border-radius: 5px; cursor: pointer; font-size: 17px; white-space: nowrap; overflow: hidden; }
+.font-item:hover { background: var(--red-soft); }
+.font-item.on { background: var(--red-soft); outline: 1px solid var(--red); }
+.font-cat { font-family: var(--vscode-font-family, sans-serif); font-size: 10px; color: var(--muted); flex: none; }

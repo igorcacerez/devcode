@@ -101,11 +101,13 @@ class PrototypeEditorProvider {
 		const nonce = Math.random().toString(36).slice(2);
 		return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource}; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource} https://fonts.googleapis.com https://fonts.gstatic.com; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline' https://fonts.googleapis.com; script-src 'nonce-${nonce}'; font-src ${webview.cspSource} https://fonts.gstatic.com data:;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${media('proto.css')}">
 </head><body>
 <div id="app"></div>
+<script nonce="${nonce}">window.__DEVCODE_FONTS_URL = ${JSON.stringify(String(media('google-fonts.json')))};</script>
+<script nonce="${nonce}" src="${media('styles.js')}"></script>
 <script nonce="${nonce}" src="${media('proto.js')}"></script>
 </body></html>`;
 	}

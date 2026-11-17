@@ -96,7 +96,15 @@ O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo*
 - **Frames:** Mobile (390 × 844) e Desktop (1440 × 900). Um frame novo nunca nasce por cima de outro.
 - **Ferramentas:** Mover `V`, Frame Mobile `F`, Frame Desktop `D`, Retângulo `R`, Elipse `O`, Linha `L`, Texto `T` e Imagem (da pasta do projeto).
 - **Camadas:** hierarquia por frame, ocultar/mostrar, travar, renomear (duplo clique) e reordenar.
-- **Estilos:** posição, tamanho, rotação, opacidade, preenchimento, borda, arredondamento, sombra, fonte, tamanho, peso, cor, alinhamento, altura da linha e espaçamento.
+- **Estilos completos de CSS** para caixas, textos, frames e imagens:
+  - **Aparência:** opacidade (inclusive de frames e imagens), modo de mesclagem, rotação, inclinação e espelhamento.
+  - **Preenchimento:** cor com transparência, **degradê linear ou radial** com várias cores, ou nenhum.
+  - **Borda:** cor, estilo (sólida, tracejada, pontilhada, dupla…) e espessura geral ou **por lado**; **cantos arredondados** iguais ou por canto; **espaçamento interno (padding)**.
+  - **Sombras:** várias, externas ou internas (`inset`), com deslocamento, desfoque, expansão e cor; **contorno (outline)**.
+  - **Tipografia:** **todas as 1.749 fontes do Google Fonts**, com busca, prévia e categoria. Também tamanho, peso (100 a 900), cor, alinhamento horizontal e vertical, altura da linha, espaçamento entre letras e entre palavras, recuo, itálico, sublinhado/tachado/sobrelinha (estilo, cor e espessura), maiúsculas/minúsculas, sombra no texto, sem quebra de linha e reticências.
+  - **Filtros:** desfoque, brilho, contraste, saturação, preto e branco, sépia, inverter, matiz e **desfoque do fundo** (vidro fosco).
+  - **CSS personalizado:** campo para qualquer outra propriedade CSS (ex.: `clip-path`, `border-image`).
+- A **exportação PNG** é feita a partir do próprio HTML/CSS, com as fontes do Google embutidas, e fica idêntica à tela.
 - **Desfazer/refazer** (`Ctrl+Z`/`Ctrl+Y`), duplicar (`Ctrl+D`), alinhar várias camadas, zoom (`Ctrl`+roda) e mover a tela (`Espaço`+arrastar).
 - **Exportar PNG** de cada frame para a pasta `exportacoes/`.
 - Arquivos `.devproto` também são protegidos: um protótipo colado de fora é excluído.
