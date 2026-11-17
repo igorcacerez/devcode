@@ -15,7 +15,6 @@ const path = require('path');
 const cp = require('child_process');
 
 const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
-const ASSET_NAME = /^DEV-CODE-Setup.*\.exe$/i;
 
 function readProduct() {
 	try { return JSON.parse(fs.readFileSync(path.join(vscode.env.appRoot, 'product.json'), 'utf8')); } catch { return {}; }
@@ -30,14 +29,14 @@ function compareVersions(a, b) {
 	return 0;
 }
 
-function getJson(url) {
+/** Tag da última release, lida do redirecionamento de /releases/latest (ex.: .../releases/tag/v1.0.1). */
+function latestTag(repo) {
 	return new Promise((resolve, reject) => {
-		https.get(url, { headers: { 'User-Agent': 'DEV-CODE-updater', 'Accept': 'application/vnd.github+json' } }, res => {
-			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) { return getJson(res.headers.location).then(resolve, reject); }
-			let data = '';
-			res.on('data', c => data += c);
-			res.on('end', () => res.statusCode === 200 ? resolve(JSON.parse(data)) : reject(new Error(`HTTP ${res.statusCode}`)));
-		}).on('error', reject);
+		https.request(`https://github.com/${repo}/releases/latest`, { method: 'HEAD', headers: { 'User-Agent': 'DEV-CODE-updater' } }, res => {
+			const m = /\/releases\/tag\/([^/?#]+)/.exec(res.headers.location || '');
+			res.resume();
+			m ? resolve(decodeURIComponent(m[1])) : reject(new Error(res.statusCode === 404 ? 'nenhuma versão publicada' : `HTTP ${res.statusCode}`));
+		}).on('error', reject).end();
 	});
 }
 
@@ -99,20 +98,21 @@ async function checkForUpdates(context, { manual } = {}) {
 		if (manual) { vscode.window.showInformationMessage('DEV CODE: atualização automática disponível só na versão instalada no Windows.'); }
 		return;
 	}
-	let release;
+	// Usa o redirecionamento de github.com/<repo>/releases/latest (sem o limite de 60 consultas/hora
+	// da API, que um laboratório inteiro saindo pelo mesmo IP estouraria).
+	let latest;
 	try {
-		release = await getJson(`https://api.github.com/repos/${repo}/releases/latest`);
+		latest = await latestTag(repo);
 	} catch (err) {
 		if (manual) { vscode.window.showWarningMessage(`DEV CODE: não foi possível verificar atualizações (${err.message}).`); }
 		return;
 	}
-	const latest = release.tag_name;
 	if (compareVersions(latest, current) <= 0) {
 		if (manual) { vscode.window.showInformationMessage(`DEV CODE: você já está na versão mais recente (${current}).`); }
 		return;
 	}
-	const asset = (release.assets || []).find(a => ASSET_NAME.test(a.name));
-	if (!asset) { return; }
+	const release = { tag_name: latest, html_url: `https://github.com/${repo}/releases/tag/${latest}` };
+	const asset = { browser_download_url: `https://github.com/${repo}/releases/download/${latest}/DEV-CODE-Setup.exe` };
 	const skipped = context.globalState.get('devcode.skipVersion');
 	if (!manual && skipped === latest) { return; }
 	const choice = await vscode.window.showInformationMessage(
