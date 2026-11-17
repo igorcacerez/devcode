@@ -1,0 +1,140 @@
+/*---------------------------------------------------------------------------------------------
+ *  DEV CODE - atualização automática pelo GitHub.
+ *  Ao abrir (e a cada 6 horas) consulta a última release do repositório do projeto
+ *  (product.json → devcodeRepo). Se houver versão nova, mostra uma notificação; ao clicar em
+ *  "Atualizar agora", baixa o instalador (DEV-CODE-Setup.exe), fecha a IDE, instala em modo
+ *  silencioso e reabre a IDE já atualizada.
+ *--------------------------------------------------------------------------------------------*/
+'use strict';
+
+const vscode = require('vscode');
+const https = require('https');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const cp = require('child_process');
+
+const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
+const ASSET_NAME = /^DEV-CODE-Setup.*\.exe$/i;
+
+function readProduct() {
+	try { return JSON.parse(fs.readFileSync(path.join(vscode.env.appRoot, 'product.json'), 'utf8')); } catch { return {}; }
+}
+
+function compareVersions(a, b) {
+	const pa = String(a).replace(/^v/i, '').split(/[.-]/).map(n => parseInt(n, 10) || 0);
+	const pb = String(b).replace(/^v/i, '').split(/[.-]/).map(n => parseInt(n, 10) || 0);
+	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+		if ((pa[i] || 0) !== (pb[i] || 0)) { return (pa[i] || 0) - (pb[i] || 0); }
+	}
+	return 0;
+}
+
+function getJson(url) {
+	return new Promise((resolve, reject) => {
+		https.get(url, { headers: { 'User-Agent': 'DEV-CODE-updater', 'Accept': 'application/vnd.github+json' } }, res => {
+			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) { return getJson(res.headers.location).then(resolve, reject); }
+			let data = '';
+			res.on('data', c => data += c);
+			res.on('end', () => res.statusCode === 200 ? resolve(JSON.parse(data)) : reject(new Error(`HTTP ${res.statusCode}`)));
+		}).on('error', reject);
+	});
+}
+
+function download(url, dest, onProgress, token) {
+	return new Promise((resolve, reject) => {
+		const req = https.get(url, { headers: { 'User-Agent': 'DEV-CODE-updater' } }, res => {
+			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+				return download(res.headers.location, dest, onProgress, token).then(resolve, reject);
+			}
+			if (res.statusCode !== 200) { return reject(new Error(`HTTP ${res.statusCode}`)); }
+			const total = parseInt(res.headers['content-length'] || '0', 10);
+			let received = 0;
+			const file = fs.createWriteStream(dest);
+			res.on('data', chunk => { received += chunk.length; onProgress(received, total); });
+			res.pipe(file);
+			file.on('finish', () => file.close(() => resolve(dest)));
+			file.on('error', reject);
+		});
+		req.on('error', reject);
+		token?.onCancellationRequested(() => { req.destroy(new Error('cancelado')); });
+	});
+}
+
+async function installUpdate(release, asset) {
+	const dest = path.join(os.tmpdir(), `DEV-CODE-Setup-${release.tag_name}.exe`);
+	try {
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: `DEV CODE: baixando a versão ${release.tag_name}`,
+			cancellable: true,
+		}, async (progress, token) => {
+			let last = 0;
+			await download(asset.browser_download_url, dest, (rec, total) => {
+				if (!total) { return; }
+				const pct = Math.floor(rec / total * 100);
+				if (pct > last) { progress.report({ increment: pct - last, message: `${pct}%` }); last = pct; }
+			}, token);
+		});
+	} catch (err) {
+		vscode.window.showErrorMessage(`DEV CODE: não foi possível baixar a atualização. ${err.message || err}`);
+		return;
+	}
+	const ok = await vscode.window.showInformationMessage(
+		`A versão ${release.tag_name} foi baixada. O DEV CODE vai fechar, instalar e abrir de novo. Salve seus arquivos!`,
+		{ modal: true }, 'Instalar agora');
+	if (ok !== 'Instalar agora') { return; }
+	await vscode.workspace.saveAll(false);
+	// instalador em modo silencioso; /DEVCODEUPDATE=1 reabre a IDE no final e só verifica o Node
+	const child = cp.spawn(dest, ['/SILENT', '/SP-', '/SUPPRESSMSGBOXES', '/NORESTART', '/DEVCODEUPDATE=1'], { detached: true, stdio: 'ignore' });
+	child.unref();
+	setTimeout(() => vscode.commands.executeCommand('workbench.action.quit'), 1500);
+}
+
+async function checkForUpdates(context, { manual } = {}) {
+	const product = readProduct();
+	const repo = product.devcodeRepo;
+	const current = product.devcodeVersion;
+	if (!repo || !current || process.platform !== 'win32') {
+		if (manual) { vscode.window.showInformationMessage('DEV CODE: atualização automática disponível só na versão instalada no Windows.'); }
+		return;
+	}
+	let release;
+	try {
+		release = await getJson(`https://api.github.com/repos/${repo}/releases/latest`);
+	} catch (err) {
+		if (manual) { vscode.window.showWarningMessage(`DEV CODE: não foi possível verificar atualizações (${err.message}).`); }
+		return;
+	}
+	const latest = release.tag_name;
+	if (compareVersions(latest, current) <= 0) {
+		if (manual) { vscode.window.showInformationMessage(`DEV CODE: você já está na versão mais recente (${current}).`); }
+		return;
+	}
+	const asset = (release.assets || []).find(a => ASSET_NAME.test(a.name));
+	if (!asset) { return; }
+	const skipped = context.globalState.get('devcode.skipVersion');
+	if (!manual && skipped === latest) { return; }
+	const choice = await vscode.window.showInformationMessage(
+		`🎉 Nova versão do DEV CODE disponível: ${latest} (você está na ${current}).`,
+		'Atualizar agora', 'Depois', 'Novidades');
+	if (choice === 'Atualizar agora') {
+		await installUpdate(release, asset);
+	} else if (choice === 'Novidades') {
+		await vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+	} else if (choice === 'Depois') {
+		// não insiste até a próxima abertura da IDE
+		await context.globalState.update('devcode.skipVersion', latest);
+		setTimeout(() => context.globalState.update('devcode.skipVersion', undefined), CHECK_INTERVAL);
+	}
+}
+
+function registerUpdater(context) {
+	context.subscriptions.push(vscode.commands.registerCommand('devcode.checkForUpdates', () => checkForUpdates(context, { manual: true })));
+	context.globalState.update('devcode.skipVersion', undefined);
+	setTimeout(() => checkForUpdates(context), 8000);
+	const timer = setInterval(() => checkForUpdates(context), CHECK_INTERVAL);
+	context.subscriptions.push({ dispose: () => clearInterval(timer) });
+}
+
+module.exports = { registerUpdater, compareVersions };

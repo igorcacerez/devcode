@@ -1,0 +1,230 @@
+{
+  "name": "devcode-quiz",
+  "displayName": "DEV CODE - Verificação de Entendimento",
+  "description": "Antes de executar o código, o aluno precisa responder corretamente uma pergunta sobre o próprio código.",
+  "version": "1.0.0",
+  "publisher": "vscode",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onWebviewPanel:devcode.start",
+    "onNotebook:jupyter-notebook"
+  ],
+  "main": "./src/extension.js",
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "devcode.run",
+        "title": "Executar (responder pergunta)",
+        "category": "DEV CODE",
+        "icon": "$(play)"
+      },
+      {
+        "command": "devcode.newProject",
+        "title": "Novo Projeto…",
+        "category": "DEV CODE",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "devcode.newPythonProject",
+        "title": "Novo Projeto Python…",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.newHtmlProject",
+        "title": "Novo Projeto HTML…",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.liveServer.start",
+        "title": "Abrir com Live Server (Go Live)",
+        "category": "DEV CODE",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "devcode.liveServer.stop",
+        "title": "Parar Live Server",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.git.commitPush",
+        "title": "Enviar para o GitHub (commit + push)",
+        "category": "DEV CODE",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "devcode.git.pull",
+        "title": "Atualizar do GitHub (pull)",
+        "category": "DEV CODE",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "devcode.git.connect",
+        "title": "Conectar projeto ao GitHub",
+        "category": "DEV CODE",
+        "icon": "$(github)"
+      },
+      {
+        "command": "devcode.github.login",
+        "title": "Entrar no GitHub",
+        "category": "DEV CODE",
+        "icon": "$(github)"
+      },
+      {
+        "command": "devcode.github.logout",
+        "title": "Sair do GitHub",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.startPage",
+        "title": "Tela Inicial",
+        "category": "DEV CODE",
+        "icon": "$(home)"
+      },
+      {
+        "command": "devcode.notebook.restart",
+        "title": "Reiniciar ambiente de execução",
+        "category": "DEV CODE",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "devcode.newColabProject",
+        "title": "Novo Projeto Colab…",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.checkForUpdates",
+        "title": "Verificar atualizações",
+        "category": "DEV CODE"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "devcode.run",
+          "group": "navigation@0"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "devcode.run",
+          "group": "navigation@0"
+        }
+      ],
+      "file/newFile": [
+        {
+          "command": "devcode.newProject",
+          "group": "devcode"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "devcode.liveServer.start",
+          "when": "resourceLangId == html",
+          "group": "navigation"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "devcode.git.commitPush",
+          "group": "navigation@0"
+        },
+        {
+          "command": "devcode.git.pull",
+          "group": "navigation@1"
+        },
+        {
+          "command": "devcode.github.login",
+          "group": "navigation@2"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "devcode.notebook.restart",
+          "group": "navigation/execute@10",
+          "when": "notebookType == jupyter-notebook"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "devcode.run",
+        "key": "f5"
+      },
+      {
+        "command": "devcode.run",
+        "key": "ctrl+f5",
+        "mac": "cmd+f5"
+      }
+    ],
+    "configuration": {
+      "title": "DEV CODE",
+      "properties": {
+        "devcode.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Comando do Python usado pelo botão Executar (padrão: python / python3)."
+        },
+        "devcode.projectType": {
+          "type": "string",
+          "enum": [
+            "python",
+            "colab",
+            "html",
+            "react",
+            "expo"
+          ],
+          "description": "Tipo do projeto (definido pelo assistente de Novo Projeto)."
+        },
+        "devcode.liveServer.browser": {
+          "type": "string",
+          "enum": [
+            "interno",
+            "externo"
+          ],
+          "default": "interno",
+          "enumDescriptions": [
+            "Navegador embutido, ao lado do código",
+            "Navegador padrão do sistema"
+          ],
+          "description": "Onde abrir o Live Server."
+        },
+        "devcode.startupChooser": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostrar o menu de projetos ao abrir a IDE sem projeto."
+        }
+      }
+    },
+    "viewsWelcome": [
+      {
+        "view": "explorer",
+        "contents": "[$(home) Tela Inicial](command:devcode.startPage)\nCrie um projeto (Python, HTML, React, React Native) ou baixe o seu do GitHub.",
+        "when": "workbenchState == empty"
+      }
+    ],
+    "notebookRenderer": [
+      {
+        "id": "devcode-input",
+        "displayName": "DEV CODE: entrada de dados (input)",
+        "entrypoint": "./renderer/inputRenderer.js",
+        "mimeTypes": [
+          "application/x-devcode-input"
+        ],
+        "requiresMessaging": "always"
+      }
+    ]
+  }
+}
