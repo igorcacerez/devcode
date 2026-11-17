@@ -86,6 +86,10 @@ Os dois precisam do **Node.js (LTS)** e de internet na criação.
 - `package.json` e `package-lock.json` não são vigiados pelo bloqueio de arquivos colados, porque o próprio npm os altera. A pasta `.expo` também é ignorada.
 - **Perguntas de React** (além das de JavaScript): valor inicial e tipo de um `useState`, qual função altera o estado, o que acontece ao chamar o setter, quantas props um componente recebe, quando `onPress`/`onClick`/`onChangeText` executa, para que serve `<View>`, `<Text>`, `<Pressable>`, `<FlatList>`…
 
+## Ambiente do terminal (`extensions/devcode-quiz/src/envFix.js`)
+- **Política do PowerShell:** em PCs novos a política padrão é `Restricted`, que bloqueia o `npm.ps1`/`npx.ps1` e a integração de shell. Todo terminal do DEV CODE abre com `PSExecutionPolicyPreference=Bypass`, por meio de `environmentVariableCollection`. Isso vale **só para aquele terminal**, sem alterar o Windows e para qualquer conta de aluno.
+- **PATH desatualizado:** a IDE relê o PATH do registro (máquina + usuário) e completa o dos terminais e dos processos da extensão. Assim o Node/Python instalados agora pelo instalador funcionam sem reiniciar o Windows.
+
 ## Terminal monitorado (`extensions/devcode-quiz/src/terminalGuard.js`)
 O terminal fica disponível para `pip install`, `cd`, `git`, `npm` etc., mas **é fechado na hora** quando o aluno tenta:
 | Tentativa | Exemplo |

@@ -23,6 +23,7 @@ const { registerGit } = require('./git');
 const { registerStartPage, showStartPage } = require('./startPage');
 const { registerNotebookKernel } = require('./notebookKernel');
 const { registerUpdater } = require('./updater');
+const { registerEnvFix } = require('./envFix');
 const { DEV_COMMANDS } = require('./jsProjects');
 const { LiveServer } = require('./liveServer');
 
@@ -241,6 +242,8 @@ async function runActive() {
 const RUN_PATTERN = /(^|[\s;&|])(python3?|py|node|deno|bun|tsx|ts-node|java|javac|gcc|g\+\+|clang\+?\+?|cc|dotnet|go|php|ruby|rustc|cargo|vite|expo|react-native|(?:npm|pnpm|yarn)(?:\s+run)?\s+(?:dev|start|serve|preview|web|android|ios)|\.\/[\w.-]+|[\w.-]+\.exe)(\s|$)/i;
 
 function activate(context) {
+	// npm/npx no PowerShell (política Restricted) e PATH atualizado após instalar o Node
+	registerEnvFix(context).catch(err => console.error('[DEV CODE envFix]', err));
 	lineDecoration = vscode.window.createTextEditorDecorationType({
 		isWholeLine: true,
 		backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
