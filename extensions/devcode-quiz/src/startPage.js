@@ -15,6 +15,7 @@ let panel;
 const CARDS = [
 	{ id: 'python', icon: '🐍', title: 'Python', desc: 'Com ambiente virtual (.venv) pronto, estilo PyCharm.' },
 	{ id: 'colab', icon: '📓', title: 'Colab (notebook Python)', desc: 'Células de código com o resultado embaixo, igual ao Google Colab. Ideal para lógica.' },
+	{ id: 'prototipo', icon: '🎨', title: 'Protótipo (telas)', desc: 'Desenhe as telas antes de programar: frames Mobile/Desktop, camadas e estilos.' },
 	{ id: 'html', icon: '🌐', title: 'HTML, CSS e JavaScript', desc: 'Site com Live Server: a página recarrega sozinha ao salvar.' },
 	{ id: 'react', icon: '⚛️', title: 'React', desc: 'Vite + React, mínimo, sem TypeScript.' },
 	{ id: 'expo', icon: '📱', title: 'React Native (Expo)', desc: 'App de celular, template blank. Teste no Expo Go.' },

@@ -262,6 +262,8 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			.pipe(filter(getRipgrepExcludeFilter(platform, arch), { dot: true }))
 			.pipe(filter(getFoundryLocalExcludeFilter(), { dot: true }))
 			.pipe(filter(getOSProxyResolverExcludeFilter(platform, arch), { dot: true }))
+			// DEV CODE: sem Copilot SDK (IA, ~190 MB) e sem Dev Containers no pacote
+			.pipe(filter(['**', '!**/@github/copilot*/**', '!**/@github/copilot*', '!**/@devcontainers/**', '!**/@devcontainers'], { dot: true }))
 			.pipe(jsFilter)
 			.pipe(util.rewriteSourceMappingURL(sourceMappingURLBase))
 			.pipe(jsFilter.restore)

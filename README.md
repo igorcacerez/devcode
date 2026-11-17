@@ -58,9 +58,10 @@ Ao abrir a IDE aparece a **Tela Inicial**, de onde o aluno:
 |---|---|
 | 🐍 **Python** | Cria a pasta com **ambiente virtual (`.venv`)**, estilo PyCharm. O aluno escolhe qual Python usar. |
 | 📓 **Colab (notebook Python)** | Notebook igual ao **Google Colab**: células de código, resultado embaixo, `input()` dentro da célula, variáveis entre células. Ideal para **aulas de lógica**. |
+| 🎨 **Protótipo (telas)** | Editor visual estilo **Figma**, simplificado e **sem IA**: frames **Mobile** e **Desktop**, retângulos, elipses, linhas, textos e imagens, **camadas** e **estilos** (cores, bordas, cantos, sombra, tipografia). Exporta cada tela em PNG. |
 | 🌐 **HTML, CSS e JavaScript** | Site com **Live Server** embutido: a página recarrega sozinha ao salvar. |
 | ⚛️ **React** | Vite + React, mínimo, **sem TypeScript**. |
-| 📱 **React Native (Expo)** | Template *blank*, **sem TypeScript**. O aluno testa no celular pelo **Expo Go**. |
+| 📱 **React Native (Expo)** | Template *blank*, **sem TypeScript**. Roda no **emulador Android integrado** (instalação única) ou no celular pelo **Expo Go**. |
 | 🐙 **Projeto do Git** | Lista os repositórios da conta do aluno (ou aceita colar um link) e faz o `git clone`. |
 | 📁 **Projetos recentes** | Reabre projetos criados pelo DEV CODE. |
 
@@ -89,6 +90,40 @@ Se o aluno **errar**, vê a resposta certa, espera alguns segundos e recebe **ou
 | Ferramentas de desenvolvedor, navegador embutido | Desativados |
 | Tema | Somente **DEV CODE Light** (vermelho) |
 
+### Modo Protótipo
+O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo** do DEV CODE o aluno desenha a tela do zero:
+
+- **Frames:** Mobile (390 × 844) e Desktop (1440 × 900). Um frame novo nunca nasce por cima de outro.
+- **Ferramentas:** Mover `V`, Frame Mobile `F`, Frame Desktop `D`, Retângulo `R`, Elipse `O`, Linha `L`, Texto `T` e Imagem (da pasta do projeto).
+- **Camadas:** hierarquia por frame, ocultar/mostrar, travar, renomear (duplo clique) e reordenar.
+- **Estilos:** posição, tamanho, rotação, opacidade, preenchimento, borda, arredondamento, sombra, fonte, tamanho, peso, cor, alinhamento, altura da linha e espaçamento.
+- **Desfazer/refazer** (`Ctrl+Z`/`Ctrl+Y`), duplicar (`Ctrl+D`), alinhar várias camadas, zoom (`Ctrl`+roda) e mover a tela (`Espaço`+arrastar).
+- **Exportar PNG** de cada frame para a pasta `exportacoes/`.
+- Arquivos `.devproto` também são protegidos: um protótipo colado de fora é excluído.
+
+### Emulador Android (React Native)
+Na primeira execução de um projeto Expo, o DEV CODE pergunta onde abrir o app. Com **Emulador Android**, ele:
+- instala **uma única vez** o necessário (~1,5 GB), reaproveitando um SDK que já exista (Android Studio): Java 17, ferramentas do Android, emulador e uma imagem **Android 14 AOSP**, a mais leve, sem Google Play;
+- cria o aparelho **DevCode** com 2 GB de RAM;
+- a cada ▶/F5, liga o emulador se precisar e roda `npx expo start --android`. O Expo instala o Expo Go e abre o app.
+
+> Requer virtualização ativada no computador (BIOS + "Plataforma do Hipervisor do Windows"). Também pode ser aberto em **Terminal → Ligar Emulador Android**.
+
+### Banco de Dados (estilo DBeaver)
+O ícone **🛢 Banco de Dados** na barra lateral abre a área de manipulação de bancos:
+
+- **Conexões:**
+  - **Firebird:** escolha o arquivo `.fdb` ou crie um banco novo;
+  - **MySQL** e **PostgreSQL:** servidor, porta, usuário, senha e banco. No MySQL dá para escolher ou criar o banco na hora.
+  - As senhas ficam no cofre seguro do Windows.
+- **Árvore do banco (dicionário):** tabelas, views, triggers, procedures/funções e generators/sequences. Em cada tabela aparecem as colunas com tipo, `NOT NULL`, 🔑 **PK** e 🔗 **FK → tabela.coluna**, além das chaves estrangeiras (com `ON UPDATE/DELETE`), dos índices e das triggers.
+- **Ver registros** (até 500) e **Dicionário da tabela:** colunas, PK, FKs, índices, triggers e o **DDL** (script de criação).
+- **Editor SQL:**
+  - **`Ctrl+Enter`** executa a instrução onde está o cursor (ou só o trecho selecionado);
+  - **`Alt+X`** / **`F5`** executa o script inteiro, entendendo `SET TERM ^ ;` do Firebird, `$$` do PostgreSQL, comentários e strings.
+- **Resultados:** uma aba por instrução, grade com ordenação por coluna e filtro, tempo de execução, linhas afetadas e mensagens de erro claras.
+- Ver o código de **triggers, procedures e views** com um clique.
+
 ### Git com cliques
 - **Entrar no GitHub** pela própria IDE (código de dispositivo).
 - **☁↑ Enviar:** o aluno escreve só a mensagem; a IDE faz commit e push.
@@ -101,12 +136,20 @@ Em **português do Brasil**, com o menu reduzido a **Arquivo** e **Terminal**, a
 ## Instalação
 
 1. Baixe o **[DEV-CODE-Setup.exe](https://github.com/igorcacerez/devcode/releases/latest/download/DEV-CODE-Setup.exe)**.
-2. Execute o instalador. Ele também **instala as ferramentas das aulas**:
-   - **Python 32 bits** (última versão com instalador oficial de 32 bits);
-   - **Firebird** (última versão estável; usuário `SYSDBA`, senha `masterkey`);
-   - **Node.js** (última versão; se já estiver instalado e houver versão mais nova, **atualiza**).
+2. Execute o instalador. Na tela **"Ferramentas das aulas"**, escolha o que deve ser instalado junto com a IDE. Assim o computador do aluno, mesmo "cru", fica pronto:
 
-   O Windows pede permissão de administrador (UAC) **só se faltar alguma ferramenta**. O registro da instalação fica em `%TEMP%\devcode-tools.log`.
+   | Ferramenta | Padrão | Detalhes |
+   |---|:---:|---|
+   | **Python 3 (32 bits)** | ✅ | última versão com instalador oficial de 32 bits |
+   | **Python 3 (64 bits)** | | última versão |
+   | **Firebird** | ✅ | última estável; usuário `SYSDBA`, senha `masterkey` |
+   | **MySQL** | | 8.4 LTS, serviço `MySQL`, porta 3306; usuário `root`, **sem senha** |
+   | **PostgreSQL** | | última versão, porta 5432; usuário `postgres`, senha `postgres` |
+   | **Node.js** | ✅ | última versão; se já houver uma mais antiga, **atualiza** |
+   | **Emulador Android** | ✅ | SDK + emulador + Android 14 em `C:\DevCode\android`, para todos os usuários; ativa a *Plataforma do Hipervisor do Windows* (reiniciar uma vez). Cerca de 2 GB |
+   | **PHP** | | última versão (NTS x64) em `C:\DevCode\php`, no PATH, com as extensões de banco ativadas |
+
+   O que já estiver instalado é mantido. O Windows pede permissão de administrador (UAC) **só se houver algo para instalar**. O registro fica em `%TEMP%\devcode-tools.log`.
 
 > ⚠️ O executável ainda não é assinado digitalmente, então o Windows SmartScreen pode avisar "Editor desconhecido". Clique em **Mais informações → Executar assim mesmo**.
 

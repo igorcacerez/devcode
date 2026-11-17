@@ -170,12 +170,23 @@ function fromLocalNormal(extensionPath: string): Stream {
 	// extension's folder, where vsce doesn't look for them.
 	const packageJson = JSON.parse(fs.readFileSync(path.join(extensionPath, 'package.json'), 'utf8'));
 	const dependencies = [...Object.keys(packageJson.dependencies ?? {}), ...Object.keys(packageJson.optionalDependencies ?? {})];
-	if (dependencies.length > 0) {
+	// DEV CODE: a extensão do DEV CODE leva os próprios node_modules (drivers de banco em JS puro;
+	// o "pg-native" opcional do PostgreSQL impede o bundle com a configuração comum do esbuild).
+	const shipsNodeModules = path.basename(extensionPath) === 'devcode-quiz';
+	if (dependencies.length > 0 && !shipsNodeModules) {
 		throw new Error(`Extension ${path.basename(extensionPath)} has production dependencies (${dependencies.join(', ')}) but is packaged without bundling, so they would be missing. Bundle it with esbuild.mts (and esbuild.browser.mts for the web), or package its dependencies explicitly (packagedDependenciesByExtension in build/lib/extensions.ts).`);
 	}
 
 	vsce.listFiles({ cwd: extensionPath, packageManager: vsce.PackageManager.None })
-		.then(fileNames => es.readArray(toVinylFiles(extensionPath, fileNames.map(fileName => ({ path: fileName, localPath: path.join(extensionPath, fileName) })))).pipe(result))
+		.then(fileNames => {
+			if (shipsNodeModules) {
+				const walk = (dir: string): string[] => fs.readdirSync(path.join(extensionPath, dir), { withFileTypes: true })
+					.flatMap(e => e.isDirectory() ? walk(path.posix.join(dir, e.name)) : [path.posix.join(dir, e.name)]);
+				const extra = fs.existsSync(path.join(extensionPath, 'node_modules')) ? walk('node_modules') : [];
+				fileNames = [...new Set([...fileNames.filter(f => !f.startsWith('node_modules/')), ...extra])];
+			}
+			return es.readArray(toVinylFiles(extensionPath, fileNames.map(fileName => ({ path: fileName, localPath: path.join(extensionPath, fileName) })))).pipe(result);
+		})
 		.catch(err => result.emit('error', err));
 
 	return result.pipe(createStatsStream(path.basename(extensionPath)));
@@ -368,6 +379,8 @@ const nativeExtensions = [
 
 const excludedExtensions = [
 	'copilot',
+	// DEV CODE: extensões que não usamos (IDE mais leve)
+	'mermaid-markdown-features', 'markdown-math', 'terminal-suggest', 'microsoft-authentication', 'extension-editing', 'references-view', 'tunnel-forwarding', 'debug-auto-launch', 'debug-server-ready', 'npm', 'grunt', 'gulp', 'jake', 'docker', 'clojure', 'coffeescript', 'dart', 'fsharp', 'go', 'groovy', 'hlsl', 'julia', 'latex', 'lua', 'objective-c', 'perl', 'pug', 'r', 'razor', 'restructuredtext', 'ruby', 'rust', 'shaderlab', 'swift', 'vb', 'handlebars', 'less', 'scss',
 	// DevCode: somente o tema DEV CODE Light
 	'theme-abyss', 'theme-kimbie-dark', 'theme-monokai', 'theme-monokai-dimmed', 'theme-quietlight', 'theme-red',
 	'theme-solarized-dark', 'theme-solarized-light', 'theme-tomorrow-night-blue',

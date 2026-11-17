@@ -126,7 +126,7 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#NameLong}"; File
 
 [Run]
 ; DEV CODE: ferramentas das aulas (pede UAC só se faltar algo ou se houver Node mais novo)
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\devcode-tools\devcode-tools.ps1"" {code:DevCodeToolsArgs}"; StatusMsg: "Verificando as ferramentas das aulas (Python 32 bits, Firebird, Node.js)..."; Flags: waituntilterminated runhidden
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\devcode-tools\devcode-tools.ps1"" {code:DevCodeToolsArgs}"; StatusMsg: "Instalando as ferramentas das aulas (pode levar vários minutos)..."; Flags: waituntilterminated runhidden
 ; DEV CODE: depois da atualização automática, reabre a IDE
 Filename: "{app}\{#ExeBasename}.exe"; Flags: nowait postinstall; Check: IsDevCodeAutoUpdate
 Filename: "{app}\{#ExeBasename}.exe"; Parameters: "{code:GetRelaunchArgs}"; Description: "{cm:LaunchProgram,{#NameLong}}"; Tasks: runcode; Flags: nowait postinstall; Check: ShouldRunAfterUpdate; AfterInstall: DeleteRelaunchArgsFile
@@ -1428,12 +1428,66 @@ begin
   Result := ExpandConstant('{param:DEVCODEUPDATE|0}') = '1';
 end;
 
+// DEV CODE: página "Ferramentas das aulas" (o que instalar junto com a IDE)
+var
+  DevCodeToolsPage: TInputOptionWizardPage;
+
+const
+  DevCodeToolIds = 'python32,python64,firebird,mysql,postgres,node,android,php';
+
+procedure InitializeWizard();
+begin
+  DevCodeToolsPage := CreateInputOptionPage(wpSelectTasks,
+    'Ferramentas das aulas',
+    'Escolha o que deve ser instalado junto com o DEV CODE.',
+    'Marque as ferramentas que os alunos vão usar. O que já estiver instalado no computador é mantido (o Node.js é atualizado se houver versão mais nova). Algumas ferramentas pedem permissão de administrador.',
+    False, False);
+  DevCodeToolsPage.Add('Python 3 - 32 bits');
+  DevCodeToolsPage.Add('Python 3 - 64 bits');
+  DevCodeToolsPage.Add('Firebird (banco de dados - usuário SYSDBA, senha masterkey)');
+  DevCodeToolsPage.Add('MySQL (banco de dados - usuário root, sem senha)');
+  DevCodeToolsPage.Add('PostgreSQL (banco de dados - usuário postgres, senha postgres)');
+  DevCodeToolsPage.Add('Node.js (última versão - necessário para React e React Native)');
+  DevCodeToolsPage.Add('Emulador Android (para React Native - cerca de 2 GB)');
+  DevCodeToolsPage.Add('PHP');
+  // padrão: Python 32 bits, Firebird, Node.js e Emulador Android
+  DevCodeToolsPage.Values[0] := True;
+  DevCodeToolsPage.Values[1] := False;
+  DevCodeToolsPage.Values[2] := True;
+  DevCodeToolsPage.Values[3] := False;
+  DevCodeToolsPage.Values[4] := False;
+  DevCodeToolsPage.Values[5] := True;
+  DevCodeToolsPage.Values[6] := True;
+  DevCodeToolsPage.Values[7] := False;
+end;
+
 function DevCodeToolsArgs(Value: string): string;
+var
+  I: Integer;
+  Ids, Selected, Id: string;
 begin
   if IsDevCodeAutoUpdate() then
-    Result := '-Update'
-  else
-    Result := '';
+  begin
+    // atualização automática: só verifica se há Node.js mais novo
+    Result := '-Update';
+    exit;
+  end;
+  Ids := DevCodeToolIds + ',';
+  Selected := '';
+  for I := 0 to 7 do
+  begin
+    Id := Copy(Ids, 1, Pos(',', Ids) - 1);
+    Delete(Ids, 1, Pos(',', Ids));
+    if DevCodeToolsPage.Values[I] then
+    begin
+      if Selected <> '' then
+        Selected := Selected + ',';
+      Selected := Selected + Id;
+    end;
+  end;
+  if Selected = '' then
+    Selected := 'none';
+  Result := '-Tools ' + Selected;
 end;
 
 function WizardNotSilent(): Boolean;
@@ -1660,7 +1714,21 @@ begin
 end;
 
 function GetAppMutex(Value: string): string;
+var
+  Waited: Integer;
 begin
+  // DEV CODE: na atualização automática, espera a IDE fechar (até 60 s) em vez de cancelar a
+  // instalação em silêncio. Isso corrige também quem ainda usa o atualizador antigo (1.0.x),
+  // que abria o instalador antes de terminar de fechar a IDE.
+  if IsDevCodeAutoUpdate() then
+  begin
+    Waited := 0;
+    while CheckForMutexes('{#AppMutex}') and (Waited < 120) do
+    begin
+      Sleep(500);
+      Waited := Waited + 1;
+    end;
+  end;
   if IsBackgroundUpdate() then
     Result := ''
   else

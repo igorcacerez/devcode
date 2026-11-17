@@ -24,6 +24,9 @@ const { registerStartPage, showStartPage } = require('./startPage');
 const { registerNotebookKernel } = require('./notebookKernel');
 const { registerUpdater } = require('./updater');
 const { registerEnvFix } = require('./envFix');
+const { registerPrototypeEditor } = require('./prototypeEditor');
+const { registerAndroid, prepareForExpo } = require('./android');
+const { registerDatabase } = require('./db');
 const { DEV_COMMANDS } = require('./jsProjects');
 const { LiveServer } = require('./liveServer');
 
@@ -188,12 +191,21 @@ async function runDevServer(doc, dev) {
 	}
 	await vscode.workspace.saveAll(false);
 	const folder = vscode.workspace.getWorkspaceFolder(doc.uri).uri.fsPath;
+	// React Native: roda no emulador Android integrado (ou no celular, pelo QR Code)
+	let cmd = dev.cmd;
+	let env;
+	if (dev === DEV_COMMANDS.expo) {
+		env = await prepareForExpo(extContextRef);
+		if (env) { cmd = 'npx expo start --android'; }
+	}
 	let term = vscode.window.terminals.find(t => t.name === RUN_TERMINAL_NAME);
 	if (term) { term.dispose(); }
-	term = vscode.window.createTerminal({ name: RUN_TERMINAL_NAME, cwd: folder });
+	term = vscode.window.createTerminal({ name: RUN_TERMINAL_NAME, cwd: folder, env });
 	term.show(true);
-	term.sendText(dev.cmd, true);
-	if (dev.url) {
+	term.sendText(cmd, true);
+	if (dev === DEV_COMMANDS.expo && env) {
+		vscode.window.showInformationMessage('DEV CODE: o app vai abrir no emulador Android (na primeira vez o Expo instala o Expo Go nele). Para recarregar, salve o arquivo.');
+	} else if (dev.url) {
 		// abre a pré-visualização ao lado quando o Vite subir (recarrega sozinho a cada salvamento)
 		setTimeout(() => vscode.commands.executeCommand('simpleBrowser.api.open', vscode.Uri.parse(dev.url), { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true })
 			.then(undefined, () => vscode.env.openExternal(vscode.Uri.parse(dev.url))), 3500);
@@ -256,6 +268,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newProject', newProject));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newPythonProject', () => newPythonProject()));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newColabProject', () => require('./project').newColabProject()));
+	context.subscriptions.push(vscode.commands.registerCommand('devcode.newPrototypeProject', () => require('./project').newPrototypeProject()));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newHtmlProject', newHtmlProject));
 	extContextRef = context;
 	initProjects(context);
@@ -263,6 +276,9 @@ function activate(context) {
 	registerGit(context, { rescan: rescanAll });
 	registerStartPage(context);
 	registerUpdater(context);
+	registerPrototypeEditor(context);
+	registerAndroid(context);
+	registerDatabase(context);
 	// notebooks estilo Colab: pergunta antes de rodar cada célula alterada
 	registerNotebookKernel(context, cell => quiz(cell.document, cell.notebook.uri));
 	// Ao abrir a IDE sem projeto: mostra o menu Novo Projeto / Projeto do Git / Recentes

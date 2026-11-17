@@ -154,3 +154,8 @@ MenuRegistry.appendMenuItem(MenuId.MenubarFileMenu, {
 	group: '8_devcode_update', order: 0,
 	command: { id: 'devcode.checkForUpdates', title: localize('devcode.menu.update', "Verificar Atualizações do DEV CODE") },
 });
+
+MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+	group: '0_devcode', order: 2,
+	command: { id: 'devcode.android.start', title: localize('devcode.menu.android', "Ligar Emulador Android") },
+});

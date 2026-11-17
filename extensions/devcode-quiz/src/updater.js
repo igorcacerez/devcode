@@ -84,10 +84,25 @@ async function installUpdate(release, asset) {
 		{ modal: true }, 'Instalar agora');
 	if (ok !== 'Instalar agora') { return; }
 	await vscode.workspace.saveAll(false);
-	// instalador em modo silencioso; /DEVCODEUPDATE=1 reabre a IDE no final e só verifica o Node
-	const child = cp.spawn(dest, ['/SILENT', '/SP-', '/SUPPRESSMSGBOXES', '/NORESTART', '/DEVCODEUPDATE=1'], { detached: true, stdio: 'ignore' });
+	// O instalador cancela em silêncio se a IDE ainda estiver aberta. Por isso um processo auxiliar
+	// (PowerShell, separado da IDE) espera TODOS os processos do DEV CODE fecharem e só então instala.
+	// /DEVCODEUPDATE=1 faz o instalador reabrir a IDE no final e só verificar o Node.
+	const exe = process.execPath.replace(/'/g, '\'\'');
+	const setup = dest.replace(/'/g, '\'\'');
+	const log = path.join(os.tmpdir(), 'devcode-update.log').replace(/'/g, '\'\'');
+	const script = [
+		`$exe = '${exe}'`,
+		`Add-Content -Path '${log}' -Value "$(Get-Date) aguardando o DEV CODE fechar..."`,
+		'for ($i = 0; $i -lt 120; $i++) { if (-not (Get-Process | Where-Object { $_.Path -eq $exe })) { break }; Start-Sleep -Milliseconds 500 }',
+		'Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process -Force -ErrorAction SilentlyContinue',
+		'Start-Sleep -Seconds 1',
+		`Add-Content -Path '${log}' -Value "$(Get-Date) instalando ${release.tag_name}..."`,
+		`$p = Start-Process -FilePath '${setup}' -ArgumentList '/SILENT','/SP-','/SUPPRESSMSGBOXES','/NORESTART','/DEVCODEUPDATE=1','/LOG="${log.replace(/\.log$/, '-setup.log')}"' -Wait -PassThru`,
+		`Add-Content -Path '${log}' -Value "$(Get-Date) instalador terminou com código $($p.ExitCode)"`,
+	].join('; ');
+	const child = cp.spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', script], { detached: true, stdio: 'ignore', windowsHide: true });
 	child.unref();
-	setTimeout(() => vscode.commands.executeCommand('workbench.action.quit'), 1500);
+	setTimeout(() => vscode.commands.executeCommand('workbench.action.quit'), 800);
 }
 
 async function checkForUpdates(context, { manual } = {}) {

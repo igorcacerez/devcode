@@ -145,6 +145,17 @@ Todo arquivo de código do projeto precisa ter sido **criado ou salvo dentro da 
 - **Pergunta do DEV CODE:** vale **por célula**. Antes de rodar uma célula nova ou alterada, o aluno responde uma pergunta sobre o código daquela célula.
 - **Arquivos colados:** salvar o notebook conta como "salvo pelo editor". Um `.ipynb` colado de fora (baixado do Colab, por exemplo) é excluído como os outros arquivos de código.
 
+## Versão 1.1.0
+- **Modo Protótipo** (`src/prototypeEditor.js` + `media/proto/`): editor customizado para `*.devproto` (JSON). O documento é um TextDocument comum, então desfazer/refazer, salvar e o vigia de arquivos funcionam normalmente. A exportação PNG é desenhada em canvas, e as imagens são lidas como blob para não "sujar" o canvas.
+- **Emulador Android** (`src/android.js`): instalação sob demanda em `%LOCALAPPDATA%\DevCode\android` (ou no SDK existente), com a imagem `system-images;android-34;default;x86_64` e o AVD `DevCode`. A extração usa o `tar.exe` do Windows (o `tar` do Git falha com `C:`).
+- **IDE mais leve:**
+  - o Copilot SDK (~190 MB) e o Dev Containers saíram do pacote;
+  - **38 extensões** a menos (Mermaid, Markdown Math, sugestões do terminal, contas Microsoft, edição de extensões, npm/grunt/gulp/jake, Docker e linguagens não ensinadas);
+  - a depuração JS embutida (`ms-vscode.js-debug*`) também foi removida.
+- **Atualização automática corrigida:** o instalador cancelava em silêncio porque a IDE ainda estava aberta.
+  - Agora um processo auxiliar espera a IDE fechar e só então instala, com log em `%TEMP%\devcode-update.log` e `devcode-update-setup.log`.
+  - Em modo de atualização, o próprio instalador também espera até 60 s a IDE fechar. Isso corrige a atualização a partir das versões 1.0.x.
+
 ## Tela Inicial (`extensions/devcode-quiz/src/startPage.js`)
 - **Quando aparece:** ao abrir a IDE sem projeto, abre a aba **Início**. Ela também está em **Arquivo → Tela Inicial** e no botão do Explorador.
 - **O que tem:**
