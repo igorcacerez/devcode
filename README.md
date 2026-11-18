@@ -92,6 +92,8 @@ Se o aluno **errar**, vê a resposta certa, espera alguns segundos e recebe **ou
 | Ferramentas de desenvolvedor, navegador embutido | Desativados |
 | Tema | Somente **DEV CODE Light** (vermelho) |
 
+> **Exceção:** **colar** (Ctrl+V) é liberado somente dentro do **Cliente de API** e do **Teste de Sites**, para URLs e tokens. Copiar continua bloqueado, e colar continua bloqueado no editor de código, no terminal e no resto da IDE.
+
 ### Modo Protótipo
 O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo** do DEV CODE o aluno desenha a tela do zero:
 

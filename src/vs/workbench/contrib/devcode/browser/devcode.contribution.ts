@@ -12,6 +12,7 @@ import { INotificationService, Severity } from '../../../../platform/notificatio
 import { KeybindingsRegistry, KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
 import { MenuId, MenuRegistry } from '../../../../platform/actions/common/actions.js';
 import { localize } from '../../../../nls.js';
 import { language as platformLanguage } from '../../../../base/common/platform.js';
@@ -83,14 +84,26 @@ registerWorkbenchContribution2(DevCodeClipboardGuard.ID, DevCodeClipboardGuard, 
 CommandsRegistry.registerCommand('devcode.clipboardBlocked', accessor => {
 	accessor.get(INotificationService).notify({ severity: Severity.Warning, message: BLOCKED_MESSAGE });
 });
-for (const primary of [
-	KeyMod.CtrlCmd | KeyCode.KeyV, KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyV, KeyMod.Shift | KeyCode.Insert,
-	KeyMod.CtrlCmd | KeyCode.KeyC, KeyMod.CtrlCmd | KeyCode.Insert, KeyMod.CtrlCmd | KeyCode.KeyX, KeyMod.Shift | KeyCode.Delete,
-]) {
+// Colar é liberado SOMENTE no Cliente de API (URLs, tokens) e no Teste de Sites (URLs).
+// Nesses dois o foco está dentro do webview (não num editor de código, terminal ou caixa de texto da IDE).
+const PASTE_ALLOWED = ContextKeyExpr.and(
+	ContextKeyExpr.not('editorTextFocus'),
+	ContextKeyExpr.not('terminalFocus'),
+	ContextKeyExpr.not('inputFocus'),
+	ContextKeyExpr.or(
+		ContextKeyExpr.equals('activeWebviewPanelId', 'mainThreadWebview-devcode.api.request'),
+		ContextKeyExpr.equals('activeCustomEditorId', 'devcode.test'),
+		ContextKeyExpr.equals('focusedView', 'devcode.api.sidebar'),
+	),
+);
+for (const [primary, isPaste] of [
+	[KeyMod.CtrlCmd | KeyCode.KeyV, true], [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyV, true], [KeyMod.Shift | KeyCode.Insert, true],
+	[KeyMod.CtrlCmd | KeyCode.KeyC, false], [KeyMod.CtrlCmd | KeyCode.Insert, false], [KeyMod.CtrlCmd | KeyCode.KeyX, false], [KeyMod.Shift | KeyCode.Delete, false],
+] as const) {
 	KeybindingsRegistry.registerKeybindingRule({
 		id: 'devcode.clipboardBlocked',
 		weight: KeybindingWeight.ExternalExtension + 1000, // vence keybindings do usuário e de extensões
-		when: undefined,
+		when: isPaste ? PASTE_ALLOWED?.negate() : undefined,
 		primary,
 	});
 }
