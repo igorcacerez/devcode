@@ -71,7 +71,12 @@ async function logout() {
 	updateAccountItem();
 }
 
+const listeners = [];
+function onDidChange(fn) { listeners.push(fn); }
+function account() { return session?.account.label; }
+
 function updateAccountItem() {
+	for (const fn of listeners) { try { fn(); } catch { } }
 	if (!accountItem) { return; }
 	if (session) {
 		accountItem.text = `$(github) ${session.account.label}`;
@@ -133,4 +138,4 @@ function registerGithubAuth(context) {
 	getSession(false);
 }
 
-module.exports = { registerGithubAuth, login, isLoggedIn, gitAuthEnv, profile, listRepos, createRepo };
+module.exports = { registerGithubAuth, onDidChange, account, logout, login, isLoggedIn, gitAuthEnv, profile, listRepos, createRepo };

@@ -512,10 +512,23 @@
           "id": "devcode-db",
           "title": "Banco de Dados",
           "icon": "media/database.svg"
+        },
+        {
+          "id": "devcode-github",
+          "title": "GitHub",
+          "icon": "media/github.svg"
         }
       ]
     },
     "views": {
+      "devcode-github": [
+        {
+          "type": "webview",
+          "id": "devcode.github.panel",
+          "name": "GitHub",
+          "icon": "media/github.svg"
+        }
+      ],
       "devcode-db": [
         {
           "id": "devcode.db.explorer",

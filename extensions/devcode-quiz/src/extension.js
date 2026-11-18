@@ -249,7 +249,15 @@ async function runActive() {
 		term = vscode.window.createTerminal({ name: RUN_TERMINAL_NAME, cwd: path.dirname(doc.fileName) });
 	}
 	term.show(true);
-	term.sendText(cmd, true);
+	term.sendText(forShell(cmd), true);
+}
+
+/** PowerShell não executa "c:\...\python.exe" "arquivo" sem o operador & (e o 5.1 não tem &&). */
+function forShell(cmd) {
+	const shell = (vscode.env.shell || '').toLowerCase();
+	if (process.platform !== 'win32' || !/powershell|pwsh/.test(shell)) { return cmd; }
+	return cmd.split(' && ').map(c => c.startsWith('"') ? `& ${c}` : c)
+		.reduce((acc, c) => acc ? `${acc}; if ($?) { ${c} }` : c, '');
 }
 
 /** Heurística: a linha de comando executa/compila código-fonte? */
@@ -276,6 +284,7 @@ function activate(context) {
 	initProjects(context);
 	registerFileGuard(context);
 	registerGit(context, { rescan: rescanAll });
+	require('./githubPanel').registerGithubPanel(context, dir => require('./fileGuard').trustFolder(context, dir), rescanAll);
 	registerStartPage(context);
 	registerUpdater(context);
 	registerPrototypeEditor(context);

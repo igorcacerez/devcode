@@ -1,4 +1,4 @@
-#define RootLicenseFileName FileExists(RepoDir + '\LICENSE.rtf') ? 'LICENSE.rtf' : 'LICENSE.txt'
+﻿#define RootLicenseFileName FileExists(RepoDir + '\LICENSE.rtf') ? 'LICENSE.rtf' : 'LICENSE.txt'
 #define LocalizedLanguageFile(Language = "") \
     DirExists(RepoDir + "\licenses") && Language != "" \
       ? ('; LicenseFile: "' + RepoDir + '\licenses\LICENSE-' + Language + '.rtf"') \
@@ -1433,7 +1433,7 @@ var
   DevCodeToolsPage: TInputOptionWizardPage;
 
 const
-  DevCodeToolIds = 'python32,python64,firebird,mysql,postgres,node,android,php';
+  DevCodeToolIds = 'python32,python64,firebird,mysql,postgres,node,android,php,git';
 
 procedure InitializeWizard();
 begin
@@ -1450,6 +1450,7 @@ begin
   DevCodeToolsPage.Add('Node.js (última versão - necessário para React e React Native)');
   DevCodeToolsPage.Add('Emulador Android (para React Native - cerca de 2 GB)');
   DevCodeToolsPage.Add('PHP');
+  DevCodeToolsPage.Add('Git (controle de versão - necessário para o painel GitHub)');
   // padrão: Python 32 bits, Firebird, Node.js e Emulador Android
   DevCodeToolsPage.Values[0] := True;
   DevCodeToolsPage.Values[1] := False;
@@ -1459,6 +1460,7 @@ begin
   DevCodeToolsPage.Values[5] := True;
   DevCodeToolsPage.Values[6] := True;
   DevCodeToolsPage.Values[7] := False;
+  DevCodeToolsPage.Values[8] := True;
 end;
 
 function DevCodeToolsArgs(Value: string): string;
@@ -1474,7 +1476,7 @@ begin
   end;
   Ids := DevCodeToolIds + ',';
   Selected := '';
-  for I := 0 to 7 do
+  for I := 0 to 8 do
   begin
     Id := Copy(Ids, 1, Pos(',', Ids) - 1);
     Delete(Ids, 1, Pos(',', Ids));

@@ -10,6 +10,7 @@
     node      Node.js (última versão; atualiza se já existir versão mais antiga)
     android   Emulador Android (SDK + emulador + Android 14 AOSP) em C:\DevCode\android
     php       PHP (última versão, NTS x64) em C:\DevCode\php, no PATH
+    git       Git for Windows (última versão)
 
   Só pede administrador (UAC) se houver algo para instalar/atualizar.
   Uso:  devcode-tools.ps1 -Tools python32,firebird,node,android
@@ -156,6 +157,20 @@ function Get-LatestNode {
 	$latest = $index | Where-Object { $_.version -match '^v\d+\.\d+\.\d+$' -and $_.files -contains 'win-x64-msi' } | Select-Object -First 1
 	return @{ Version = [version]($latest.version.TrimStart('v')); Tag = $latest.version }
 }
+function Test-Git { Refresh-Path; [bool](Get-Command git -ErrorAction SilentlyContinue) -or (Test-Path "$env:ProgramFiles\Git\cmd\git.exe") }
+function Get-LatestGit {
+	$rel = Invoke-RestMethod 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers $Headers
+	$asset = $rel.assets | Where-Object { $_.name -match '^Git-[\d.]+-64-bit\.exe$' } | Select-Object -First 1
+	return @{ Version = $rel.tag_name; Url = $asset.browser_download_url; Name = $asset.name }
+}
+function Install-Git {
+	$g = Get-LatestGit
+	$exe = Download $g.Url $g.Name
+	Log "Instalando Git $($g.Version)"
+	$proc = Start-Process $exe -ArgumentList '/VERYSILENT', '/NORESTART', '/NOCANCEL', '/SP-', '/SUPPRESSMSGBOXES', '/COMPONENTS="icons,exteg\shellhere,assoc,assoc_sh"' -Wait -PassThru
+	Log "Git: código $($proc.ExitCode)"
+}
+
 function Install-Node($tag) {
 	$msi = Download "https://nodejs.org/dist/$tag/node-$tag-x64.msi" "node-$tag-x64.msi"
 	Log "Instalando/atualizando Node.js $tag"
@@ -242,6 +257,7 @@ $checks = [ordered]@{
 	postgres = @{ Test = { Test-Postgres }; Name = 'PostgreSQL'; Latest = { (Get-LatestPostgres).Version } }
 	android  = @{ Test = { Test-Android }; Name = 'Emulador Android'; Latest = { Get-AndroidToolsName } }
 	php      = @{ Test = { Test-PHP }; Name = 'PHP'; Latest = { (Get-LatestPHP).Version } }
+	git      = @{ Test = { Test-Git }; Name = 'Git'; Latest = { (Get-LatestGit).Version } }
 }
 
 try {
@@ -286,6 +302,7 @@ try {
 				'^node=(.+)$' { Install-Node $Matches[1] }
 				'^android$' { Install-Android }
 				'^php$' { Install-PHP }
+				'^git$' { Install-Git }
 			}
 		} catch { Log "ERRO em ${item}: $($_.Exception.Message)" }
 	}

@@ -118,6 +118,7 @@ Na primeira execução de um projeto Expo, o DEV CODE pergunta onde abrir o app.
 - cria o aparelho **DevCode** com 2 GB de RAM;
 - a cada ▶/F5, liga o emulador se precisar e roda `npx expo start --android --localhost`. O Expo instala o Expo Go e **abre o app do aluno no emulador**, sem precisar do celular.
 - A conexão usa `localhost` (via `adb reverse`), então funciona mesmo com o firewall da rede do laboratório bloqueando o IP local.
+- Se a placa de vídeo do computador não suportar o emulador (tela preta e o emulador fecha), o DEV CODE liga de novo com **renderização por software** e lembra a escolha nas próximas vezes. O registro fica em `%TEMP%\devcode-emulator.log`.
 
 > Requer virtualização ativada no computador (BIOS + "Plataforma do Hipervisor do Windows"). Também pode ser aberto em **Terminal → Ligar Emulador Android**.
 
@@ -158,6 +159,14 @@ Feito para a matéria de **Teste de Software**. O aluno cria testes automatizado
 
 > Usa o Microsoft Edge (ou Google Chrome) já instalado no Windows; nada é baixado.
 
+### Painel GitHub (estilo GitHub Desktop)
+O ícone do GitHub na barra lateral abre um painel com tudo o que o aluno precisa, sem digitar comandos:
+- **Conta:** entrar e sair (importante nos computadores do laboratório).
+- **Projeto aberto:** branch, link do repositório, **⬇ Atualizar (pull)** e **⬆ Enviar (push)** com o número de commits ainda não enviados.
+- **Alterações:** lista dos arquivos modificados, novos e apagados, com caixas para escolher o que entra no commit; clicar no arquivo mostra as diferenças. Escreve a mensagem e clica em **Commit** ou **Commit e enviar**.
+- **Histórico:** os últimos 20 commits, com autor e data.
+- **Meus repositórios:** lista e filtro dos repositórios da conta, **Baixar** (clone, já liberado no vigia de arquivos) e **Publicar no GitHub** para criar um repositório novo com o projeto aberto.
+
 ### Git com cliques
 - **Entrar no GitHub** pela própria IDE (código de dispositivo).
 - **☁↑ Enviar:** o aluno escreve só a mensagem; a IDE faz commit e push.
@@ -182,6 +191,7 @@ Em **português do Brasil**, com o menu reduzido a **Arquivo** e **Terminal**, a
    | **Node.js** | ✅ | última versão; se já houver uma mais antiga, **atualiza** |
    | **Emulador Android** | ✅ | SDK + emulador + Android 14 em `C:\DevCode\android`, para todos os usuários; ativa a *Plataforma do Hipervisor do Windows* (reiniciar uma vez). Cerca de 2 GB |
    | **PHP** | | última versão (NTS x64) em `C:\DevCode\php`, no PATH, com as extensões de banco ativadas |
+   | **Git** | ✅ | última versão do Git for Windows (necessário para o painel GitHub) |
 
    O que já estiver instalado é mantido. O Windows pede permissão de administrador (UAC) **só se houver algo para instalar**. O registro fica em `%TEMP%\devcode-tools.log`.
 

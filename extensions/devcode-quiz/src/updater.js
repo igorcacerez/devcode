@@ -100,7 +100,7 @@ async function installUpdate(release, asset) {
 		'Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process -Force -ErrorAction SilentlyContinue',
 		'Start-Sleep -Seconds 2',
 		`Add-Content -Path $log -Value "$(Get-Date) instalando ${release.tag_name}..."`,
-		`$p = Start-Process -FilePath '${q(dest)}' -ArgumentList '/SILENT','/SP-','/SUPPRESSMSGBOXES','/NORESTART','/DEVCODEUPDATE=1','/LOG="${q(log.replace(/\.log$/, '-setup.log'))}"' -Wait -PassThru`,
+		`$p = Start-Process -FilePath '${q(dest)}' -ArgumentList '/SILENT','/SP-','/SUPPRESSMSGBOXES','/NORESTART','/DEVCODEUPDATE=1','/LOG="${q(log.replace(/\.log$/, '-setup.log'))}"' -PassThru; $p.WaitForExit()`,
 		'Add-Content -Path $log -Value "$(Get-Date) instalador terminou com código $($p.ExitCode)"',
 	].join('\r\n'), 'utf8');
 	// O auxiliar é criado via WMI (Win32_Process.Create): assim ele NÃO fica dentro do "job" do

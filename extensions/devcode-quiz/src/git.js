@@ -42,11 +42,11 @@ function repoNameFromUrl(url) {
 }
 
 /** Projeto do Git: clona e registra a pasta como projeto confiável. */
-async function cloneProject(trustFolder) {
+async function cloneProject(trustFolder, presetUrl) {
 	if (!(await gitAvailable())) { return; }
-	let url;
-	const repos = await gh.listRepos();
-	if (repos.length || !gh.isLoggedIn()) {
+	let url = presetUrl;
+	const repos = url ? [] : await gh.listRepos();
+	if (!url && (repos.length || !gh.isLoggedIn())) {
 		const items = [
 			...(gh.isLoggedIn() ? [] : [{ label: '$(github) Entrar no GitHub para ver meus repositórios', id: 'login' }]),
 			{ label: '$(link) Colar o link de um repositório', id: 'paste' },
@@ -261,4 +261,4 @@ function registerGit(context, { rescan }) {
 	updateStatusBar();
 }
 
-module.exports = { registerGit, cloneProject };
+module.exports = { registerGit, cloneProject, run, gitNet, currentRepo, ensureIdentity, push, pull, connectRemote, gitAvailable, updateStatusBar };

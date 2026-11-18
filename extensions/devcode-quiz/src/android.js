@@ -223,21 +223,35 @@ async function runningEmulator(sdk) {
 async function startEmulator() {
 	const sdk = findSdk();
 	if (await runningEmulator(sdk)) { return sdk; }
+	// "-gpu auto" usa a placa de vídeo; em vários PCs de laboratório o driver falha (tela preta e o
+	// emulador fecha). Se o emulador morrer antes de ligar, tentamos de novo com renderização por software.
+	const log = path.join(os.tmpdir(), 'devcode-emulator.log');
+	const modes = gpuSoftware ? ['swiftshader_indirect'] : ['auto', 'swiftshader_indirect'];
 	await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'DEV CODE: ligando o emulador Android…' }, async progress => {
-		const child = cp.spawn(path.join(sdk, 'emulator', exe('emulator')),
-			['-avd', AVD, '-no-boot-anim', '-netdelay', 'none', '-netspeed', 'full', '-no-audio', '-gpu', 'auto'],
-			{ detached: true, stdio: 'ignore', env: { ...process.env, ...androidEnv(sdk, findJava()) } });
-		child.unref();
-		const start = Date.now();
-		while (Date.now() - start < 240000) {
-			await new Promise(r => setTimeout(r, 3000));
-			if (await runningEmulator(sdk)) {
-				const booted = (await adb(sdk, ['shell', 'getprop', 'sys.boot_completed'])).trim();
-				progress.report({ message: booted === '1' ? 'pronto!' : 'iniciando o Android…' });
-				if (booted === '1') { return; }
+		for (const gpu of modes) {
+			const out = fs.openSync(log, 'a');
+			const child = cp.spawn(path.join(sdk, 'emulator', exe('emulator')),
+				['-avd', AVD, '-no-boot-anim', '-no-snapshot-load', '-netdelay', 'none', '-netspeed', 'full', '-no-audio', '-gpu', gpu, '-memory', '2048'],
+				{ detached: true, stdio: ['ignore', out, out], env: { ...process.env, ...androidEnv(sdk, findJava()) } });
+			let exited = false;
+			child.on('exit', () => { exited = true; });
+			child.unref();
+			if (gpu !== 'auto') { progress.report({ message: 'usando renderização por software…' }); }
+			const start = Date.now();
+			while (!exited && Date.now() - start < 300000) {
+				await new Promise(r => setTimeout(r, 3000));
+				if (await runningEmulator(sdk)) {
+					const booted = (await adb(sdk, ['shell', 'getprop', 'sys.boot_completed'])).trim();
+					progress.report({ message: booted === '1' ? 'pronto!' : 'iniciando o Android…' });
+					if (booted === '1') {
+						if (gpu !== 'auto') { gpuSoftware = true; extCtx?.globalState.update('devcode.android.gpuSoftware', true); }
+						return;
+					}
+				}
 			}
+			if (!exited) { break; }
 		}
-		throw new Error('o emulador demorou demais para iniciar. Verifique se a virtualização (Plataforma do Hipervisor do Windows) está ativada.');
+		throw new Error(`o emulador Android não conseguiu ligar. Verifique se a virtualização (Plataforma do Hipervisor do Windows) está ativada. Detalhes em ${log}`);
 	});
 	return sdk;
 }
@@ -271,7 +285,11 @@ async function prepareForExpo(context) {
 	void context;
 }
 
+let gpuSoftware = false;
+let extCtx;
 function registerAndroid(context) {
+	extCtx = context;
+	gpuSoftware = !!context.globalState.get('devcode.android.gpuSoftware');
 	context.subscriptions.push(
 		vscode.commands.registerCommand('devcode.android.setup', setup),
 		vscode.commands.registerCommand('devcode.android.start', async () => { if (isReady() || await setup()) { await startEmulator().catch(err => vscode.window.showErrorMessage(`DEV CODE: ${err.message}`)); } }),
