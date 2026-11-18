@@ -25,6 +25,7 @@ const { registerNotebookKernel } = require('./notebookKernel');
 const { registerUpdater } = require('./updater');
 const { registerEnvFix } = require('./envFix');
 const { registerPrototypeEditor } = require('./prototypeEditor');
+const { registerTestEditor } = require('./testEditor');
 const { registerAndroid, prepareForExpo } = require('./android');
 const { registerDatabase } = require('./db');
 const { DEV_COMMANDS } = require('./jsProjects');
@@ -196,7 +197,8 @@ async function runDevServer(doc, dev) {
 	let env;
 	if (dev === DEV_COMMANDS.expo) {
 		env = await prepareForExpo(extContextRef);
-		if (env) { cmd = 'npx expo start --android'; }
+		// --localhost: o Expo usa "adb reverse" (127.0.0.1); o IP da rede local costuma ser bloqueado pelo firewall/rede do laboratório
+		if (env) { cmd = 'npx expo start --android --localhost'; }
 	}
 	let term = vscode.window.terminals.find(t => t.name === RUN_TERMINAL_NAME);
 	if (term) { term.dispose(); }
@@ -277,6 +279,7 @@ function activate(context) {
 	registerStartPage(context);
 	registerUpdater(context);
 	registerPrototypeEditor(context);
+	registerTestEditor(context);
 	registerAndroid(context);
 	registerDatabase(context);
 	// notebooks estilo Colab: pergunta antes de rodar cada célula alterada

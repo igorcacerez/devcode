@@ -52,7 +52,8 @@ window.DevStyle = (function () {
 	/** Aplica todos os estilos do nó (caixa + texto + CSS personalizado) no elemento. */
 	function apply(el, n) {
 		const s = el.style;
-		const isBox = n.type !== 'line';
+		// grupo: só um contêiner transparente (opacidade, mesclagem, transformações, filtros e CSS livre)
+		const isBox = n.type !== 'line' && n.type !== 'group';
 		s.opacity = n.opacity ?? 1;
 		const tr = [];
 		if (n.rotation) { tr.push(`rotate(${n.rotation}deg)`); }
@@ -104,6 +105,7 @@ window.DevStyle = (function () {
 		}
 		if (n.type === 'image') { s.overflow = 'hidden'; }
 		if (n.type === 'frame') { s.overflow = n.clip === false ? 'visible' : 'hidden'; }
+		if (n.type === 'group') { s.overflow = 'visible'; }
 		// CSS personalizado (qualquer propriedade CSS)
 		if (n.css) {
 			for (const decl of String(n.css).split(';')) {
@@ -254,7 +256,7 @@ window.DevStyle = (function () {
 		));
 		if (n.type === 'line') {
 			out.push(F.section('Linha', F.row(F.color('Cor', n, 'stroke', { def: '#111111' })), F.row(F.num('Esp.', n, 'strokeWidth', { min: 1, unit: 'px' }))));
-		} else {
+		} else if (n.type !== 'group') {
 			// ---- Preenchimento (cor sólida, degradê linear/radial ou nenhum)
 			const fillType = n.fillType || 'solid';
 			const fillRows = [FR.row(FR.select('Tipo', n, 'fillType', [['solid', 'Cor sólida'], ['linear', 'Degradê linear'], ['radial', 'Degradê radial'], ['none', 'Nenhum']], { def: 'solid' }))];
@@ -361,7 +363,7 @@ window.DevStyle = (function () {
 			F.row(F.range('Sépia', n.filters, 'sepia', { min: 0, max: 100, def: 0, unit: '%' })),
 			F.row(F.range('Inverter', n.filters, 'invert', { min: 0, max: 100, def: 0, unit: '%' })),
 			F.row(F.range('Matiz', n.filters, 'hueRotate', { min: 0, max: 360, def: 0, unit: '°' })),
-			n.type !== 'line' ? F.row(F.range('Desfoque do fundo', n, 'backdropBlur', { min: 0, max: 40, def: 0, unit: 'px', title: 'Efeito "vidro fosco": desfoca o que está atrás' })) : null,
+			n.type !== 'line' && n.type !== 'group' ? F.row(F.range('Desfoque do fundo', n, 'backdropBlur', { min: 0, max: 40, def: 0, unit: 'px', title: 'Efeito "vidro fosco": desfoca o que está atrás' })) : null,
 		));
 
 		// ---- CSS personalizado: qualquer propriedade CSS

@@ -3,8 +3,10 @@
 	'use strict';
 	const vscode = acquireVsCodeApi();
 	const PRESETS = { mobile: { w: 390, h: 844, label: 'Mobile' }, desktop: { w: 1440, h: 900, label: 'Desktop' } };
-	const ICONS = { frame: '#', rect: '▭', ellipse: '◯', line: '╱', text: 'T', image: '🖼' };
-	const TYPE_NAMES = { frame: 'Frame', rect: 'Retângulo', ellipse: 'Elipse', line: 'Linha', text: 'Texto', image: 'Imagem' };
+	const ICONS = { frame: '#', group: '▣', rect: '▭', ellipse: '◯', line: '╱', text: 'T', image: '🖼' };
+	const TYPE_NAMES = { frame: 'Frame', group: 'Grupo', rect: 'Retângulo', ellipse: 'Elipse', line: 'Linha', text: 'Texto', image: 'Imagem' };
+	const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
+	const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
 	let model = null;
 	let selection = new Set();
@@ -16,6 +18,11 @@
 	let fitted = false;
 	let spaceDown = false;
 	let commitTimer = null;
+	/** camadas abertas/fechadas no painel (frames abertos e grupos fechados por padrão) */
+	const layerOpen = new Map();
+	let lastSelKey = '';
+	/** arrasto de camadas no painel: { ids } */
+	let layerDrag = null;
 
 	// ------------------------------------------------------------------ util
 	const $ = (sel, root = document) => root.querySelector(sel);
@@ -56,11 +63,70 @@
 		walk(n => { if (n.type === type) { count++; } });
 		return `${TYPE_NAMES[type]} ${count + 1}`;
 	}
+	/** Caminho da raiz até o nó (inclusive): [frame?, grupo?, …, nó]. */
+	function pathTo(id) {
+		const out = [];
+		const rec = nodes => {
+			for (const n of nodes) {
+				out.push(n);
+				if (n.id === id || (n.children && rec(n.children))) { return true; }
+				out.pop();
+			}
+			return false;
+		};
+		return rec(model.nodes) ? out : [];
+	}
+	const isContainer = n => n.type === 'frame' || n.type === 'group';
+	/** Selecionados sem os que já vêm junto com um pai selecionado. */
+	function topLevelSelected() {
+		return selected().filter(n => !pathTo(n.id).slice(0, -1).some(a => selection.has(a.id)));
+	}
+	function docOrder(nodes) {
+		const order = new Map(); let i = 0;
+		walk(n => { order.set(n.id, i++); });
+		return [...nodes].sort((a, b) => order.get(a.id) - order.get(b.id));
+	}
+	/** Grupos "abertos": os que contêm algo selecionado (clicar dentro deles seleciona o filho). */
+	function enteredGroups() {
+		const s = new Set();
+		for (const id of selection) { for (const a of pathTo(id).slice(0, -1)) { s.add(a.id); } }
+		return s;
+	}
+	/** Clique no canvas: o alvo é o grupo mais externo ainda não "aberto"; senão, a própria camada. */
+	function pickTarget(id) {
+		const entered = enteredGroups();
+		for (const n of pathTo(id)) { if (n.type === 'group' && !entered.has(n.id)) { return n.id; } }
+		return id;
+	}
+	/** A caixa do grupo é sempre a união dos filhos (coordenadas absolutas, como nos frames); grupo vazio some. */
+	function syncGroups(nodes = model.nodes) {
+		for (let i = nodes.length - 1; i >= 0; i--) {
+			const n = nodes[i];
+			if (n.children) { syncGroups(n.children); }
+			if (n.type !== 'group') { continue; }
+			if (!n.children || !n.children.length) { nodes.splice(i, 1); selection.delete(n.id); continue; }
+			const vis = n.children.filter(c => c.visible !== false);
+			const b = unionBox(vis.length ? vis : n.children);
+			n.x = b.x; n.y = b.y; n.w = b.w; n.h = b.h;
+		}
+	}
+	/** Redimensiona um grupo escalando os filhos (orig = cópia do grupo antes de mexer). */
+	function scaleGroup(g, orig, x, y, w, h) {
+		const sx = orig.w ? w / orig.w : 1, sy = orig.h ? h / orig.h : 1;
+		const map = (cur, org) => {
+			cur.x = round(x + (org.x - orig.x) * sx); cur.y = round(y + (org.y - orig.y) * sy);
+			cur.w = cur.type === 'line' ? round(org.w * sx) : Math.max(1, round(org.w * sx));
+			cur.h = cur.type === 'line' ? round(org.h * sy) : Math.max(1, round(org.h * sy));
+			(cur.children || []).forEach((c, i) => { if (org.children?.[i]) { map(c, org.children[i]); } });
+		};
+		map(g, orig);
+	}
 
 	// ------------------------------------------------------------------ comunicação
 	function commit(immediate) {
 		clearTimeout(commitTimer);
-		const send = () => vscode.postMessage({ type: 'edit', model });
+		if (model) { syncGroups(); }
+		const send = () => { if (model) { syncGroups(); } vscode.postMessage({ type: 'edit', model }); };
 		if (immediate) { send(); } else { commitTimer = setTimeout(send, 250); }
 	}
 	window.addEventListener('message', e => {
@@ -76,8 +142,8 @@
 		} else if (msg.type === 'images') {
 			Object.assign(images, msg.map);
 			render();
-		} else if (msg.type === 'imagePicked') {
-			addImage(msg.src);
+		} else if (msg.type === 'imagesAdded') {
+			onImagesAdded(msg);
 		}
 	});
 	function requestImages() {
@@ -103,7 +169,10 @@
 			toolBtn('ellipse', '◯ Elipse', 'O'),
 			toolBtn('line', '╱ Linha', 'L'),
 			toolBtn('text', 'T Texto', 'T'),
-			h('button', { class: 'tool', onclick: () => vscode.postMessage({ type: 'pickImage' }), title: 'Inserir imagem da pasta do projeto' }, '🖼 Imagem'),
+			h('button', { class: 'tool', onclick: () => vscode.postMessage({ type: 'pickImage' }), title: 'Inserir imagem de qualquer pasta (é copiada para a pasta "imagens" do projeto). Também dá para arrastar imagens do Windows para a tela.' }, '🖼 Imagem'),
+			h('div', { class: 'sep' }),
+			h('button', { class: 'tool', onclick: groupSelected, title: 'Agrupar as camadas selecionadas (Ctrl+G)' }, '▣ Agrupar'),
+			h('button', { class: 'tool', onclick: ungroupSelected, title: 'Desagrupar (Ctrl+Shift+G)' }, '⊟ Desagrupar'),
 			h('div', { class: 'spacer' }),
 			h('button', { class: 'tool', onclick: () => zoomBy(1 / 1.2), title: 'Diminuir zoom (-)' }, '−'),
 			zoomEl = h('div', { class: 'zoom' }),
@@ -119,6 +188,7 @@
 		propsEl = h('div', { class: 'panel right' });
 		app.append(tb, layersEl, stage, propsEl);
 		bindStage();
+		bindLayerDnd();
 	}
 	function toolBtn(id, label, key) {
 		return h('button', { class: 'tool', 'data-tool': id, onclick: () => setTool(id), title: `${label} (${key})` }, label, h('kbd', {}, key));
@@ -153,7 +223,9 @@
 		if (n.visible === false) { el.style.display = 'none'; }
 		switch (n.type) {
 			case 'frame':
-				for (const c of n.children || []) { el.append(renderNode(c, n.x + (n.padding ? 0 : 0), n.y)); }
+			case 'group':
+				// filhos com coordenadas absolutas: posicionados relativos à caixa do pai
+				for (const c of n.children || []) { el.append(renderNode(c, n.x, n.y)); }
 				break;
 			case 'line': {
 				const b = bbox(n);
@@ -185,6 +257,7 @@
 
 	function render() {
 		if (!model || !world) { return; }
+		syncGroups();
 		world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`;
 		world.innerHTML = '';
 		for (const n of model.nodes) {
@@ -217,6 +290,12 @@
 		overlay.innerHTML = '';
 		const nodes = selected();
 		if (!nodes.length || editingTextId) { return; }
+		// contorno tracejado do grupo em que estamos "dentro"
+		const parents = new Set(nodes.map(n => find(n.id)?.parent).filter(p => p && p.type === 'group'));
+		for (const g of parents) {
+			const gp = toScreen(g.x, g.y);
+			overlay.append(h('div', { class: 'groupbox', style: { left: `${gp.x}px`, top: `${gp.y}px`, width: `${g.w * view.zoom}px`, height: `${g.h * view.zoom}px` } }));
+		}
 		const b = unionBox(nodes);
 		const p = toScreen(b.x, b.y);
 		const box = h('div', { class: 'selbox' });
@@ -235,19 +314,31 @@
 	}
 
 	// ------------------------------------------------------------------ camadas
+	const isOpen = n => layerOpen.has(n.id) ? layerOpen.get(n.id) : n.type === 'frame';
 	function renderLayers() {
 		layersEl.innerHTML = '';
 		layersEl.append(h('h3', {}, 'Camadas'));
 		if (!model.nodes.length) { layersEl.append(h('div', { class: 'empty' }, 'Nenhuma camada. Comece criando um Frame Mobile (F) ou Desktop (D).')); return; }
-		const addRows = (list, depth, parent) => {
-			for (let i = list.length - 1; i >= 0; i--) {
-				const n = list[i];
+		// quando a seleção muda, abre os grupos/frames que contêm a camada selecionada
+		const key = [...selection].join(',');
+		if (key !== lastSelKey) {
+			lastSelKey = key;
+			for (const id of selection) { for (const a of pathTo(id).slice(0, -1)) { layerOpen.set(a.id, true); } }
+		}
+		const list = h('div', { class: 'layers' });
+		const addRows = (nodes, depth) => {
+			for (let i = nodes.length - 1; i >= 0; i--) {
+				const n = nodes[i];
+				const open = isContainer(n) && isOpen(n);
+				const hasKids = isContainer(n) && n.children?.length > 0;
 				const row = h('div', {
 					class: `layer ${selection.has(n.id) ? 'selected' : ''} ${n.visible === false ? 'hidden' : ''}`,
-					style: { paddingLeft: `${8 + depth * 16}px` },
+					'data-id': n.id, 'data-depth': depth, draggable: renamingId === n.id ? undefined : 'true',
+					style: { paddingLeft: `${4 + depth * 14}px` },
 					onclick: e => { selectId(n.id, e.shiftKey); },
 					ondblclick: () => { renamingId = n.id; renderLayers(); },
 				},
+				h('span', { class: 'twisty', title: hasKids ? (open ? 'Recolher' : 'Expandir') : '', onclick: e => { if (!hasKids) { return; } e.stopPropagation(); layerOpen.set(n.id, !open); renderLayers(); } }, hasKids ? (open ? '▾' : '▸') : ''),
 				h('span', { class: 'ico' }, ICONS[n.type]),
 				h('span', { class: 'name' }, renamingId === n.id ? renameInput(n) : n.name),
 				h('button', { class: 'act', title: 'Mover para cima', onclick: e => { e.stopPropagation(); reorder(n.id, 1); } }, '▲'),
@@ -255,11 +346,96 @@
 				h('button', { class: `act ${n.locked ? 'on' : ''}`, title: n.locked ? 'Destravar' : 'Travar', onclick: e => { e.stopPropagation(); n.locked = !n.locked; commit(true); render(); } }, n.locked ? '🔒' : '🔓'),
 				h('button', { class: `act ${n.visible === false ? 'on' : ''}`, title: n.visible === false ? 'Mostrar' : 'Ocultar', onclick: e => { e.stopPropagation(); n.visible = n.visible === false; commit(true); render(); } }, n.visible === false ? '🙈' : '👁'),
 				);
-				layersEl.append(row);
-				if (n.children) { addRows(n.children, depth + 1, n); }
+				list.append(row);
+				if (open) { addRows(n.children, depth + 1); }
 			}
 		};
-		addRows(model.nodes, 0, null);
+		addRows(model.nodes, 0);
+		list.append(h('div', { class: 'drop-line', style: { display: 'none' } }));
+		layersEl.append(list);
+	}
+
+	// ---- arrastar camadas no painel: ordem (z) e entrar/sair de frames e grupos
+	function bindLayerDnd() {
+		layersEl.addEventListener('dragstart', e => {
+			const row = e.target.closest?.('.layer[data-id]');
+			if (!row) { return; }
+			const id = row.dataset.id;
+			const ids = selection.has(id) ? docOrder(topLevelSelected()).map(n => n.id) : [id];
+			layerDrag = { ids };
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('application/x-devproto-layer', ids.join(','));
+			for (const r of layersEl.querySelectorAll('.layer[data-id]')) { if (ids.includes(r.dataset.id)) { r.classList.add('dragging'); } }
+		});
+		layersEl.addEventListener('dragover', e => {
+			if (!layerDrag) { return; }
+			const t = layerDropTarget(e);
+			showLayerDrop(t);
+			e.preventDefault();
+			e.dataTransfer.dropEffect = t ? 'move' : 'none';
+		});
+		layersEl.addEventListener('dragleave', e => { if (layerDrag && !layersEl.contains(e.relatedTarget)) { showLayerDrop(null); } });
+		layersEl.addEventListener('drop', e => {
+			if (!layerDrag) { return; }
+			e.preventDefault();
+			const t = layerDropTarget(e), ids = layerDrag.ids;
+			layerDrag = null; showLayerDrop(null);
+			if (t) { moveLayers(ids, t); } else { renderLayers(); }
+		});
+		layersEl.addEventListener('dragend', () => { if (layerDrag) { layerDrag = null; renderLayers(); } });
+	}
+	/** @returns {{ mode: 'above'|'below'|'inside'|'root-bottom', id?: string, row?: HTMLElement } | null} */
+	function layerDropTarget(e) {
+		const rows = [...layersEl.querySelectorAll('.layer[data-id]')];
+		if (!rows.length) { return null; }
+		let row = e.target.closest?.('.layer[data-id]');
+		let t;
+		if (!row) {
+			// abaixo da última linha: vai para o fundo da raiz
+			const last = rows[rows.length - 1];
+			if (e.clientY < last.getBoundingClientRect().bottom) { return null; }
+			t = { mode: 'root-bottom' };
+		} else {
+			const n = find(row.dataset.id)?.node;
+			if (!n) { return null; }
+			const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / r.height;
+			let mode;
+			if (isContainer(n)) { mode = y < 0.25 ? 'above' : (y > 0.75 && !(isOpen(n) && n.children?.length)) ? 'below' : 'inside'; }
+			else { mode = y < 0.5 ? 'above' : 'below'; }
+			t = { mode, id: n.id, row };
+		}
+		return validLayerDrop(layerDrag.ids, t) ? t : null;
+	}
+	function validLayerDrop(ids, t) {
+		const moving = ids.map(id => find(id)?.node).filter(Boolean);
+		if (!moving.length) { return false; }
+		if (t.mode === 'root-bottom') { return true; }
+		if (ids.includes(t.id)) { return false; }
+		const dest = t.mode === 'inside' ? find(t.id).node : find(t.id).parent; // null = raiz
+		if (dest && pathTo(dest.id).some(a => ids.includes(a.id))) { return false; } // dentro de si mesmo
+		if (dest && moving.some(m => m.type === 'frame')) { return false; } // frames ficam na raiz
+		return true;
+	}
+	function showLayerDrop(t) {
+		const line = layersEl.querySelector('.drop-line');
+		layersEl.querySelectorAll('.drop-inside').forEach(r => r.classList.remove('drop-inside'));
+		if (!line) { return; }
+		if (!t || t.mode === 'inside') { line.style.display = 'none'; if (t) { t.row.classList.add('drop-inside'); } return; }
+		let top, depth = 0;
+		if (t.mode === 'root-bottom') { const rows = layersEl.querySelectorAll('.layer[data-id]'); const last = rows[rows.length - 1]; top = last.offsetTop + last.offsetHeight; }
+		else { top = t.row.offsetTop + (t.mode === 'below' ? t.row.offsetHeight : 0); depth = +t.row.dataset.depth || 0; }
+		Object.assign(line.style, { display: '', top: `${top}px`, left: `${24 + depth * 14}px` });
+	}
+	function moveLayers(ids, t) {
+		const moving = docOrder(ids.map(id => find(id)?.node).filter(Boolean));
+		for (const m of moving) { const f = find(m.id); f.list.splice(f.list.indexOf(m), 1); }
+		let list, index;
+		if (t.mode === 'root-bottom') { list = model.nodes; index = 0; }
+		else if (t.mode === 'inside') { const c = find(t.id).node; list = c.children = c.children || []; index = list.length; layerOpen.set(c.id, true); }
+		else { const f = find(t.id); list = f.list; index = f.list.indexOf(f.node) + (t.mode === 'above' ? 1 : 0); }
+		list.splice(index, 0, ...moving);
+		selection = new Set(moving.map(m => m.id));
+		commit(true); render();
 	}
 	function renameInput(n) {
 		const inp = h('input', { value: n.name });
@@ -280,7 +456,12 @@
 	// ------------------------------------------------------------------ propriedades
 	function num(label, obj, key, opts = {}) {
 		const inp = h('input', { type: 'number', value: round(obj[key] ?? 0), step: opts.step || 1, min: opts.min });
-		inp.addEventListener('input', () => { const v = parseFloat(inp.value); if (!isNaN(v)) { setProp(obj, key, opts.min !== undefined ? Math.max(opts.min, v) : v, opts.after); } });
+		inp.addEventListener('input', () => {
+			let v = parseFloat(inp.value);
+			if (isNaN(v)) { return; }
+			if (opts.min !== undefined) { v = Math.max(opts.min, v); }
+			if (opts.apply) { opts.apply(v); commit(); render(); } else { setProp(obj, key, v, opts.after); }
+		});
 		inp.addEventListener('keydown', e => e.stopPropagation());
 		return h('div', { class: 'field', title: opts.title || '' }, h('label', {}, label), inp);
 	}
@@ -319,7 +500,7 @@
 					h('button', { class: 'btn primary', onclick: () => addFrame('mobile') }, '📱 + Frame Mobile'),
 					h('button', { class: 'btn primary', onclick: () => addFrame('desktop') }, '🖥 + Frame Desktop')),
 			), section('Atalhos', h('div', { class: 'empty', style: { whiteSpace: 'pre-line' } },
-				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar')));
+				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nCtrl+G agrupar · Ctrl+Shift+G desagrupar\nClique duplo num grupo = selecionar dentro dele · Esc = voltar ao grupo\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar\nArraste camadas no painel para mudar a ordem ou colocar dentro de frames/grupos\nArraste imagens do Windows Explorer para a tela')));
 			return;
 		}
 		if (nodes.length > 1) {
@@ -327,15 +508,32 @@
 				h('div', { class: 'btnrow' },
 					...[['⇤ Esquerda', 'left'], ['↔ Centro', 'hcenter'], ['⇥ Direita', 'right'], ['⤒ Topo', 'top'], ['↕ Meio', 'vcenter'], ['⤓ Base', 'bottom']]
 						.map(([t, a]) => h('button', { class: 'btn', onclick: () => align(a) }, t))),
-				h('div', { class: 'btnrow' }, h('button', { class: 'btn', onclick: removeSelected }, '🗑 Apagar'))));
+				h('div', { class: 'btnrow' },
+					h('button', { class: 'btn primary', onclick: groupSelected, title: 'Ctrl+G' }, '▣ Agrupar'),
+					nodes.some(x => x.type === 'group') ? h('button', { class: 'btn', onclick: ungroupSelected, title: 'Ctrl+Shift+G' }, '⊟ Desagrupar') : null,
+					h('button', { class: 'btn', onclick: removeSelected }, '🗑 Apagar'))));
 			return;
 		}
 		const n = nodes[0];
+		const moveTo = key => v => moveNode(n, key === 'x' ? v - n.x : 0, key === 'y' ? v - n.y : 0);
+		const sizeTo = key => v => {
+			if (n.type === 'group') { scaleGroup(n, clone(n), n.x, n.y, key === 'w' ? Math.max(1, v) : n.w, key === 'h' ? Math.max(1, v) : n.h); }
+			else { n[key] = v; }
+		};
 		propsEl.append(section(TYPE_NAMES[n.type],
 			h('div', { class: 'row one' }, h('div', { class: 'field' }, h('label', {}, 'Nome'), (() => { const i = h('input', { value: n.name }); i.addEventListener('change', () => setProp(n, 'name', i.value.trim() || n.name)); i.addEventListener('keydown', e => e.stopPropagation()); return i; })())),
-			h('div', { class: 'row' }, num('X', n, 'x', { after: () => moveChildrenTo(n) }), num('Y', n, 'y', { after: () => moveChildrenTo(n) })),
-			h('div', { class: 'row' }, num('L', n, 'w', { title: 'Largura', min: n.type === 'line' ? undefined : 1 }), num('A', n, 'h', { title: 'Altura', min: n.type === 'line' ? undefined : 1 })),
+			h('div', { class: 'row' }, num('X', n, 'x', { apply: moveTo('x') }), num('Y', n, 'y', { apply: moveTo('y') })),
+			h('div', { class: 'row' }, num('L', n, 'w', { title: 'Largura', min: n.type === 'line' ? undefined : 1, apply: sizeTo('w') }), num('A', n, 'h', { title: 'Altura', min: n.type === 'line' ? undefined : 1, apply: sizeTo('h') })),
 		));
+		if (n.type === 'group') {
+			let count = 0; walk(() => { count++; }, n.children);
+			propsEl.append(section('Grupo',
+				h('div', { class: 'empty' }, `${count} camada(s). Clique duplo no grupo (na tela) para selecionar uma camada dentro dele.`),
+				h('div', { class: 'btnrow' },
+					h('button', { class: 'btn', onclick: ungroupSelected, title: 'Ctrl+Shift+G' }, '⊟ Desagrupar'),
+					h('button', { class: 'btn primary', onclick: () => exportFrame(n) }, '⬇ Exportar PNG')),
+			));
+		}
 		if (n.type === 'frame') {
 			propsEl.append(section('Frame',
 				h('div', { class: 'row one' }, select('Tamanho', n, 'preset', [['mobile', 'Mobile (390 × 844)'], ['desktop', 'Desktop (1440 × 900)'], ['custom', 'Personalizado']])),
@@ -356,7 +554,7 @@
 				h('div', { class: 'row one' }, h('div', { class: 'field' }, h('label', {}, 'Arquivo'), h('input', { value: n.src, disabled: true }))),
 				h('div', { class: 'row' }, select('Ajuste', n, 'fit', [['cover', 'Preencher'], ['contain', 'Caber'], ['fill', 'Esticar'], ['none', 'Tamanho original'], ['scale-down', 'Reduzir se precisar']]),
 					select('Posição', n, 'imagePosition', [['center', 'Centro'], ['top', 'Topo'], ['bottom', 'Base'], ['left', 'Esquerda'], ['right', 'Direita']])),
-				h('div', { class: 'btnrow' }, h('button', { class: 'btn', onclick: () => { replacingImage = n.id; vscode.postMessage({ type: 'pickImage' }); } }, 'Trocar imagem')),
+				h('div', { class: 'btnrow' }, h('button', { class: 'btn', onclick: () => vscode.postMessage({ type: 'pickImage', replace: n.id }) }, 'Trocar imagem')),
 			));
 		}
 		// estilos completos (CSS): aparência, preenchimento, borda, cantos, padding, sombras, contorno, tipografia, filtros, CSS livre
@@ -364,10 +562,10 @@
 		propsEl.append(...DevStyle.panel(n, (obj, key, value) => setProp(obj, key, value), refresh));
 		propsEl.append(h('div', { class: 'btnrow', style: { paddingTop: '10px' } },
 			h('button', { class: 'btn', onclick: duplicateSelected }, '⧉ Duplicar'),
+			n.type !== 'frame' ? h('button', { class: 'btn', onclick: groupSelected, title: 'Ctrl+G' }, '▣ Agrupar') : null,
 			h('button', { class: 'btn', onclick: removeSelected }, '🗑 Apagar')));
 		propsEl.scrollTop = scroll;
 	}
-	let replacingImage = null;
 
 	// ------------------------------------------------------------------ operações
 	function selectId(id, add) {
@@ -378,13 +576,6 @@
 	function moveNode(n, dx, dy) {
 		n.x = round(n.x + dx); n.y = round(n.y + dy);
 		for (const c of n.children || []) { moveNode(c, dx, dy); }
-	}
-	let lastFramePos = new Map();
-	function moveChildrenTo(frame) {
-		if (!frame.children) { return; }
-		const prev = lastFramePos.get(frame.id);
-		if (prev) { for (const c of frame.children) { moveNode(c, frame.x - prev.x, frame.y - prev.y); } }
-		lastFramePos.set(frame.id, { x: frame.x, y: frame.y });
 	}
 	function frameAt(x, y) {
 		for (let i = model.nodes.length - 1; i >= 0; i--) {
@@ -414,17 +605,60 @@
 		commit(true); setTool('select'); render();
 		if (!at) { focusNode(f); }
 	}
-	function addImage(src) {
-		if (replacingImage) {
-			const n = find(replacingImage)?.node; replacingImage = null;
-			if (n) { n.src = src; requestImages(); commit(true); render(); }
+	// ---- imagens: escolhidas no seletor ou soltas na tela (o arquivo já foi copiado para imagens/)
+	function naturalSize(url, max) {
+		const fallback = { w: 200, h: 150 };
+		return new Promise(res => {
+			if (!url) { res(fallback); return; }
+			const img = new Image();
+			const t = setTimeout(() => res(fallback), 3000);
+			img.onload = () => {
+				clearTimeout(t);
+				const w = img.naturalWidth, hh = img.naturalHeight;
+				if (!w || !hh) { res(fallback); return; }
+				const s = Math.min(1, max / Math.max(w, hh));
+				res({ w: Math.max(1, round(w * s)), h: Math.max(1, round(hh * s)) });
+			};
+			img.onerror = () => { clearTimeout(t); res(fallback); };
+			img.src = url;
+		});
+	}
+	async function onImagesAdded(msg) {
+		const items = msg.items || [];
+		for (const it of items) { if (it.uri) { images[it.src] = it.uri; } }
+		if (msg.replace) {
+			const n = find(msg.replace)?.node;
+			if (n && items[0]) { n.src = items[0].src; requestImages(); commit(true); render(); }
 			return;
 		}
-		const r = stage.getBoundingClientRect();
-		const c = toWorld(r.left + r.width / 2, r.top + r.height / 2);
-		const n = { id: uid(), type: 'image', name: src.split('/').pop(), src, fit: 'cover', x: round(c.x - 100), y: round(c.y - 75), w: 200, h: 150, radius: 0, opacity: 1, rotation: 0, visible: true, locked: false };
-		insert(n, c.x, c.y);
-		requestImages(); commit(true); render();
+		let at = msg.at;
+		if (!at) { const r = stage.getBoundingClientRect(); at = toWorld(r.left + r.width / 2, r.top + r.height / 2); }
+		const frame = frameAt(at.x, at.y);
+		const max = frame ? Math.max(40, Math.min(400, frame.w * 0.8)) : 400;
+		const ids = [];
+		for (const [i, it] of items.entries()) {
+			const size = await naturalSize(it.uri, max);
+			const cx = at.x + i * 24, cy = at.y + i * 24;
+			const n = { id: uid(), type: 'image', name: it.src.split('/').pop(), src: it.src, fit: 'cover', x: round(cx - size.w / 2), y: round(cy - size.h / 2), w: size.w, h: size.h, radius: 0, opacity: 1, rotation: 0, visible: true, locked: false };
+			insert(n, cx, cy); // dentro do frame sob o ponto, se houver
+			ids.push(n.id);
+		}
+		if (!ids.length) { return; }
+		selection = new Set(ids); editingTextId = null;
+		setTool('select'); requestImages(); commit(true); render();
+	}
+	const readBase64 = file => new Promise((res, rej) => {
+		const r = new FileReader();
+		r.onload = () => res(String(r.result).replace(/^data:[^,]*,/, ''));
+		r.onerror = () => rej(r.error);
+		r.readAsDataURL(file);
+	});
+	let toastTimer;
+	function toast(text) {
+		stage.querySelector('.toast')?.remove();
+		const el = h('div', { class: 'toast' }, text);
+		stage.append(el);
+		clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), 3500);
 	}
 	function removeSelected() {
 		for (const id of selection) { const f = find(id); if (f && !f.node.locked) { f.list.splice(f.list.indexOf(f.node), 1); } }
@@ -432,7 +666,7 @@
 	}
 	function duplicateSelected() {
 		const copies = [];
-		for (const n of selected()) {
+		for (const n of topLevelSelected()) {
 			const f = find(n.id);
 			const c = clone(n);
 			const reid = x => { x.id = uid(); (x.children || []).forEach(reid); };
@@ -445,7 +679,8 @@
 		selection = new Set(copies); commit(true); render();
 	}
 	function align(mode) {
-		const nodes = selected().filter(n => !n.locked); const b = unionBox(nodes);
+		const nodes = topLevelSelected().filter(n => !n.locked); if (!nodes.length) { return; }
+		const b = unionBox(nodes);
 		for (const n of nodes) {
 			const nb = bbox(n); let dx = 0, dy = 0;
 			if (mode === 'left') { dx = b.x - nb.x; } if (mode === 'right') { dx = b.x + b.w - (nb.x + nb.w); } if (mode === 'hcenter') { dx = b.x + b.w / 2 - (nb.x + nb.w / 2); }
@@ -453,6 +688,41 @@
 			moveNode(n, dx, dy);
 		}
 		commit(true); render();
+	}
+	// ---- grupos
+	function groupSelected() {
+		if (!model) { return; }
+		const nodes = docOrder(topLevelSelected());
+		if (!nodes.length) { toast('Selecione as camadas que quer agrupar (Shift+clique ou arraste uma seleção).'); return; }
+		if (nodes.some(n => n.type === 'frame')) { toast('Frames não podem ser agrupados. Selecione as camadas dentro (ou fora) dos frames.'); return; }
+		// o grupo fica no lugar (lista e posição na pilha) da camada mais acima; as outras vêm para dentro dele
+		const top = nodes[nodes.length - 1];
+		const tf = find(top.id);
+		const g = { id: uid(), type: 'group', name: nextName('group'), x: 0, y: 0, w: 0, h: 0, opacity: 1, visible: true, locked: false, children: [] };
+		tf.list.splice(tf.list.indexOf(top), 1, g);
+		for (const n of nodes.slice(0, -1)) { const f = find(n.id); f.list.splice(f.list.indexOf(n), 1); }
+		g.children = nodes;
+		selection = new Set([g.id]); editingTextId = null;
+		commit(true); render();
+	}
+	function ungroupSelected() {
+		if (!model) { return; }
+		const groups = topLevelSelected().filter(n => n.type === 'group');
+		if (!groups.length) { toast('Selecione um grupo para desagrupar.'); return; }
+		const ids = [];
+		for (const g of groups) {
+			const f = find(g.id); if (!f) { continue; }
+			const op = g.opacity ?? 1;
+			for (const c of g.children) {
+				// o que estava no grupo passa para os filhos, para o visual não mudar
+				if (op !== 1) { c.opacity = +((c.opacity ?? 1) * op).toFixed(3); }
+				if (g.visible === false) { c.visible = false; }
+				if (g.locked) { c.locked = true; }
+				ids.push(c.id);
+			}
+			f.list.splice(f.list.indexOf(g), 1, ...g.children);
+		}
+		selection = new Set(ids); commit(true); render();
 	}
 
 	// ------------------------------------------------------------------ zoom
@@ -481,10 +751,35 @@
 			else { view.x -= e.deltaX; view.y -= e.deltaY; render(); }
 		}, { passive: false });
 
+		// arrastar imagens do Windows para a tela: copia para imagens/ e insere no ponto solto
+		const hasFiles = e => [...(e.dataTransfer?.types || [])].some(t => t === 'Files' || t === 'text/uri-list');
+		stage.addEventListener('dragover', e => { if (!hasFiles(e)) { return; } e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; stage.classList.add('dropping'); });
+		stage.addEventListener('dragleave', e => { if (e.target === stage || !stage.contains(e.relatedTarget)) { stage.classList.remove('dropping'); } });
+		stage.addEventListener('drop', async e => {
+			if (!hasFiles(e)) { return; }
+			e.preventDefault(); stage.classList.remove('dropping');
+			const at = toWorld(e.clientX, e.clientY);
+			const list = [...(e.dataTransfer.files || [])].filter(f => /\.(png|jpe?g|gif|webp|svg)$/i.test(f.name));
+			const uris = list.length ? [] : (e.dataTransfer.getData('text/uri-list') || '').split(/\r?\n/).filter(u => u && !u.startsWith('#'));
+			if (!list.length && !uris.length) { toast('Só imagens PNG, JPG, GIF, WEBP ou SVG podem ser soltas aqui.'); return; }
+			try {
+				const files = await Promise.all(list.map(async f => ({ name: f.name, data: await readBase64(f) })));
+				toast('Copiando a imagem para a pasta "imagens"…');
+				vscode.postMessage({ type: 'saveImages', files, uris, at });
+			} catch (err) { toast(`Não foi possível ler a imagem: ${err.message}`); }
+		});
+
 		stage.addEventListener('dblclick', e => {
 			const el = e.target.closest('[data-id]');
 			if (!el) { return; }
 			const n = find(el.dataset.id)?.node;
+			// duplo clique num grupo: entra nele e seleciona a camada sob o cursor
+			const target = pickTarget(el.dataset.id);
+			if (target !== el.dataset.id && find(target)?.node?.type === 'group') {
+				const path = pathTo(el.dataset.id);
+				const gi = path.findIndex(x => x.id === target);
+				selection = new Set([path[gi + 1]?.id || el.dataset.id]); render(); return;
+			}
 			if (n?.type === 'text' && !n.locked) { editingTextId = n.id; selection = new Set([n.id]); render(); }
 			if (n?.type === 'frame' && el.dataset.label) { renamingId = n.id; render(); }
 		});
@@ -522,8 +817,8 @@
 			}
 			const el = e.target.closest('[data-id]');
 			if (el) {
-				let id = el.dataset.id;
-				// clicar num filho seleciona o filho; clicar no fundo do frame seleciona o frame
+				// clicar num filho de grupo seleciona o grupo (duplo clique "entra" no grupo)
+				const id = pickTarget(el.dataset.id);
 				const n = find(id)?.node;
 				if (!selection.has(id)) { selection = e.shiftKey ? new Set([...selection, id]) : new Set([id]); }
 				else if (e.shiftKey) { selection.delete(id); }
@@ -629,6 +924,7 @@
 		if (isTyping(e) || !model) { return; }
 		const ctrl = e.ctrlKey || e.metaKey;
 		if (ctrl && (e.key === 'z' || e.key === 'y' || e.key === 'Z')) { return; } // desfazer/refazer: o próprio editor faz
+		if (ctrl && e.key.toLowerCase() === 'g') { e.preventDefault(); if (e.shiftKey) { ungroupSelected(); } else { groupSelected(); } return; }
 		if (ctrl && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
 		if (ctrl && e.key.toLowerCase() === 'a') { e.preventDefault(); selection = new Set(model.nodes.map(n => n.id)); render(); return; }
 		if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); return; }

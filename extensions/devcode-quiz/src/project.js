@@ -14,6 +14,7 @@ const { trustFolder, listTrustedFolders } = require('./fileGuard');
 const { cloneProject } = require('./git');
 const { newReactProject, newExpoProject } = require('./jsProjects');
 const { emptyPrototype } = require('./prototypeEditor');
+const { emptyTestProject } = require('./testEditor');
 
 let extContext;
 function initProjects(context) { extContext = context; }
@@ -132,6 +133,7 @@ async function newProject() {
 		{ label: '$(symbol-method) Novo projeto Python', description: 'com ambiente virtual (.venv), estilo PyCharm', id: 'python' },
 		{ label: '$(notebook) Novo projeto Colab (notebook Python)', description: 'células de código com o resultado embaixo, como no Google Colab', id: 'colab' },
 		{ label: '$(symbol-color) Novo Protótipo (telas, estilo Figma)', description: 'desenhe as telas do app/site: frames, camadas e estilos', id: 'prototipo' },
+		{ label: '$(beaker) Novo projeto de Teste (estilo Selenium)', description: 'grave e rode testes de sites sem programar', id: 'teste' },
 		{ label: '$(globe) Novo projeto HTML / CSS / JavaScript', description: 'site com Live Server (recarrega sozinho)', id: 'html' },
 		{ label: '$(symbol-event) Novo projeto React', description: 'Vite + React, mínimo, sem TypeScript', id: 'react' },
 		{ label: '$(device-mobile) Novo projeto React Native (Expo)', description: 'template blank, sem TypeScript', id: 'expo' },
@@ -151,6 +153,7 @@ async function runProjectAction(id, root) {
 		case 'python': return newPythonProject();
 		case 'colab': return newColabProject();
 		case 'prototipo': return newPrototypeProject();
+		case 'teste': return newTestProject();
 		case 'html': return newHtmlProject();
 		case 'react': return newReactProject(openProject);
 		case 'expo': return newExpoProject(openProject);
@@ -227,6 +230,26 @@ async function newPrototypeProject() {
 	model.nodes[0].name = 'Tela inicial (Mobile)';
 	fs.writeFileSync(path.join(dir, 'telas.devproto'), JSON.stringify(model, null, '\t'));
 	fs.writeFileSync(path.join(dir, '.vscode', 'settings.json'), JSON.stringify({ 'devcode.projectType': 'prototipo' }, null, '\t'));
+	await openProject(dir);
+}
+
+async function newTestProject() {
+	const name = await vscode.window.showInputBox({
+		title: 'Novo Projeto de Teste (1/2): nome do projeto', placeHolder: 'testes-do-site', ignoreFocusOut: true,
+		validateInput: value => !value.trim() ? 'Digite um nome' : /[<>:"/\\|?*]/.test(value) ? 'Nome contém caracteres inválidos' : undefined,
+	});
+	if (!name) { return; }
+	const parent = await vscode.window.showOpenDialog({ title: 'Novo Projeto de Teste (2/2): onde criar o projeto?', openLabel: 'Criar aqui', canSelectFiles: false, canSelectFolders: true, canSelectMany: false });
+	if (!parent?.[0]) { return; }
+	const dir = path.join(parent[0].fsPath, name.trim());
+	if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
+		vscode.window.showErrorMessage(`DEV CODE: a pasta "${dir}" já existe e não está vazia. Escolha outro nome ou local.`, { modal: true });
+		return;
+	}
+	fs.mkdirSync(path.join(dir, '.vscode'), { recursive: true });
+	fs.mkdirSync(path.join(dir, 'relatorios'), { recursive: true });
+	fs.writeFileSync(path.join(dir, 'testes.devtest'), JSON.stringify(emptyTestProject(), null, '\t'));
+	fs.writeFileSync(path.join(dir, '.vscode', 'settings.json'), JSON.stringify({ 'devcode.projectType': 'teste' }, null, '\t'));
 	await openProject(dir);
 }
 
@@ -313,11 +336,13 @@ async function newPythonProject(kind = 'python') {
 function openMainIfEmpty() {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder || vscode.window.visibleTextEditors.length) { return; }
-	for (const f of ['telas.devproto', 'aula.ipynb', 'main.py', 'index.html', 'src/App.jsx', 'App.js']) {
+	for (const f of ['telas.devproto', 'testes.devtest', 'aula.ipynb', 'main.py', 'index.html', 'src/App.jsx', 'App.js']) {
 		const main = path.join(folder.uri.fsPath, f);
 		if (fs.existsSync(main) && fs.statSync(main).size < 4000) {
 			if (f.endsWith('.devproto')) {
 				vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(main), 'devcode.prototype');
+			} else if (f.endsWith('.devtest')) {
+				vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(main), 'devcode.test');
 			} else if (f.endsWith('.ipynb')) {
 				vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(main), 'jupyter-notebook');
 			} else {
@@ -332,4 +357,4 @@ function recentProjects() {
 	return listTrustedFolders(extContext).slice(0, 8);
 }
 
-module.exports = { initProjects, newProject, newColabProject, newPrototypeProject, runProjectAction, recentProjects, newHtmlProject, newPythonProject, openMainIfEmpty, venvPython };
+module.exports = { initProjects, newProject, newColabProject, newPrototypeProject, newTestProject, runProjectAction, recentProjects, newHtmlProject, newPythonProject, openMainIfEmpty, venvPython };

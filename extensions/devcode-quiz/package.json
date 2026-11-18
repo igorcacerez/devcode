@@ -16,6 +16,7 @@
     "onWebviewPanel:devcode.start",
     "onNotebook:jupyter-notebook",
     "onCustomEditor:devcode.prototype",
+    "onCustomEditor:devcode.test",
     "onView:devcode.db.explorer",
     "onLanguage:sql"
   ],
@@ -391,6 +392,18 @@
         "command": "devcode.db.runAll",
         "key": "f5",
         "when": "editorTextFocus && editorLangId == sql"
+      },
+      {
+        "command": "devcode.prototype.groupKey",
+        "key": "ctrl+g",
+        "mac": "cmd+g",
+        "when": "activeCustomEditorId == devcode.prototype && focusedView == ''"
+      },
+      {
+        "command": "devcode.prototype.ungroupKey",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g",
+        "when": "activeCustomEditorId == devcode.prototype && focusedView == ''"
       }
     ],
     "configuration": {
@@ -407,6 +420,7 @@
             "python",
             "colab",
             "prototipo",
+            "teste",
             "html",
             "react",
             "expo"
@@ -480,6 +494,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "devcode.test",
+        "displayName": "DEV CODE: Testes de Sites",
+        "selector": [
+          {
+            "filenamePattern": "*.devtest"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "viewsContainers": {
@@ -504,6 +528,7 @@
   "dependencies": {
     "mysql2": "^3.24.6",
     "node-firebird": "^2.21.0",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "playwright-core": "^1.65.1"
   }
 }

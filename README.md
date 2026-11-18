@@ -62,6 +62,7 @@ Ao abrir a IDE aparece a **Tela Inicial**, de onde o aluno:
 | 🌐 **HTML, CSS e JavaScript** | Site com **Live Server** embutido: a página recarrega sozinha ao salvar. |
 | ⚛️ **React** | Vite + React, mínimo, **sem TypeScript**. |
 | 📱 **React Native (Expo)** | Template *blank*, **sem TypeScript**. Roda no **emulador Android integrado** (instalação única) ou no celular pelo **Expo Go**. |
+| 🧪 **Teste de Software** | Testes automatizados de sites **estilo Selenium**, 100% visuais: gravar ações, verificações, suítes e **relatório** de sucessos e erros. |
 | 🐙 **Projeto do Git** | Lista os repositórios da conta do aluno (ou aceita colar um link) e faz o `git clone`. |
 | 📁 **Projetos recentes** | Reabre projetos criados pelo DEV CODE. |
 
@@ -94,8 +95,10 @@ Se o aluno **errar**, vê a resposta certa, espera alguns segundos e recebe **ou
 O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo** do DEV CODE o aluno desenha a tela do zero:
 
 - **Frames:** Mobile (390 × 844) e Desktop (1440 × 900). Um frame novo nunca nasce por cima de outro.
-- **Ferramentas:** Mover `V`, Frame Mobile `F`, Frame Desktop `D`, Retângulo `R`, Elipse `O`, Linha `L`, Texto `T` e Imagem (da pasta do projeto).
-- **Camadas:** hierarquia por frame, ocultar/mostrar, travar, renomear (duplo clique) e reordenar.
+- **Ferramentas:** Mover `V`, Frame Mobile `F`, Frame Desktop `D`, Retângulo `R`, Elipse `O`, Linha `L`, Texto `T` e **Imagem de qualquer pasta do computador**. A imagem é copiada automaticamente para a pasta `imagens/` do projeto; se já existir outra com o mesmo nome, vira `foto-1.png`, `foto-2.png`…
+- **Arrastar imagens do Windows** (Explorador de Arquivos) direto para a tela: a imagem é copiada para `imagens/` e aparece no ponto onde foi solta, dentro do frame que estiver embaixo.
+- **Camadas:** hierarquia por frame, ocultar/mostrar, travar, renomear (duplo clique) e **reordenar arrastando** (com linha indicando onde vai cair). Arrastar uma camada para cima de um frame ou grupo a coloca **dentro** dele.
+- **Grupos:** selecione várias camadas e use **`Ctrl+G`** (ou o botão **▣ Agrupar**). **`Ctrl+Shift+G`** desagrupa. Clicar num elemento do grupo seleciona o grupo inteiro; com **duplo clique** você entra no grupo e edita só aquele elemento. O grupo pode ter opacidade, filtros, rotação e CSS próprios.
 - **Estilos completos de CSS** para caixas, textos, frames e imagens:
   - **Aparência:** opacidade (inclusive de frames e imagens), modo de mesclagem, rotação, inclinação e espelhamento.
   - **Preenchimento:** cor com transparência, **degradê linear ou radial** com várias cores, ou nenhum.
@@ -113,7 +116,8 @@ O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo*
 Na primeira execução de um projeto Expo, o DEV CODE pergunta onde abrir o app. Com **Emulador Android**, ele:
 - instala **uma única vez** o necessário (~1,5 GB), reaproveitando um SDK que já exista (Android Studio): Java 17, ferramentas do Android, emulador e uma imagem **Android 14 AOSP**, a mais leve, sem Google Play;
 - cria o aparelho **DevCode** com 2 GB de RAM;
-- a cada ▶/F5, liga o emulador se precisar e roda `npx expo start --android`. O Expo instala o Expo Go e abre o app.
+- a cada ▶/F5, liga o emulador se precisar e roda `npx expo start --android --localhost`. O Expo instala o Expo Go e **abre o app do aluno no emulador**, sem precisar do celular.
+- A conexão usa `localhost` (via `adb reverse`), então funciona mesmo com o firewall da rede do laboratório bloqueando o IP local.
 
 > Requer virtualização ativada no computador (BIOS + "Plataforma do Hipervisor do Windows"). Também pode ser aberto em **Terminal → Ligar Emulador Android**.
 
@@ -122,6 +126,7 @@ O ícone **🛢 Banco de Dados** na barra lateral abre a área de manipulação 
 
 - **Conexões:**
   - **Firebird:** escolha o arquivo `.fdb` ou crie um banco novo;
+  - **SQLite:** abra um arquivo `.db`/`.sqlite` ou crie um novo. Não precisa instalar nada, porque o SQLite já vem dentro do DEV CODE;
   - **MySQL** e **PostgreSQL:** servidor, porta, usuário, senha e banco. No MySQL dá para escolher ou criar o banco na hora.
   - As senhas ficam no cofre seguro do Windows.
 - **Árvore do banco (dicionário):** tabelas, views, triggers, procedures/funções e generators/sequences. Em cada tabela aparecem as colunas com tipo, `NOT NULL`, 🔑 **PK** e 🔗 **FK → tabela.coluna**, além das chaves estrangeiras (com `ON UPDATE/DELETE`), dos índices e das triggers.
@@ -132,6 +137,27 @@ O ícone **🛢 Banco de Dados** na barra lateral abre a área de manipulação 
 - **Resultados:** uma aba por instrução, grade com ordenação por coluna e filtro, tempo de execução, linhas afetadas e mensagens de erro claras.
 - Ver o código de **triggers, procedures e views** com um clique.
 
+### Projeto de Teste de Software (estilo Selenium)
+Feito para a matéria de **Teste de Software**. O aluno cria testes automatizados de sites **sem programar**, de forma visual, como no Selenium IDE:
+
+1. **Tela Inicial → Novo projeto de Teste**: cria a pasta com `testes.devtest` e `relatorios/`.
+2. Informe a **URL base** do site.
+3. Organize em **suítes** (tipos de teste, ex.: *Login*, *Cadastro*, *Carrinho*), cada uma com seus **casos de teste**.
+4. Clique em **⏺ Gravar**: o Microsoft Edge do computador abre o site e cada **clique, digitação, seleção e Enter** vira uma etapa da tabela. Uma barrinha dentro da página permite adicionar verificações clicando no elemento: **Verificar texto**, **Verificar visível** e **Verificar título**.
+5. Ajuste as etapas na tabela (comando, alvo e valor), arraste para mudar a ordem, adicione ou remova.
+6. **▶ Executar caso**, **Executar suíte** ou **Executar tudo**: cada etapa fica verde (passou) ou vermelha (falhou) ao vivo.
+
+**Comandos:** abrir, clicar, digitar, selecionar, marcar/desmarcar, pressionar tecla, aguardar elemento, pausa e as verificações de texto, texto que contém, valor, visível, não visível, título, URL e quantidade de elementos.
+**Localizadores:** `id=`, `name=`, `css=`, `xpath=` e `text=`. Na gravação, o DEV CODE escolhe o mais estável (id, `data-testid`, name, texto do botão/link e, por último, CSS curto).
+**Execução robusta:** cada etapa espera o elemento aparecer (até 10 s) antes de agir. Uma falha não interrompe os outros casos, e uma **captura de tela** é tirada no momento do erro.
+
+**Relatório:** ao final é gerado um HTML em `relatorios/relatorio-AAAA-MM-DD_HH-mm-ss.html` com:
+- o resumo (total, quantos passaram, quantos falharam, duração e um gráfico);
+- o resultado de cada suíte, caso e etapa;
+- a mensagem de erro em português e a captura de tela de cada falha.
+
+> Usa o Microsoft Edge (ou Google Chrome) já instalado no Windows; nada é baixado.
+
 ### Git com cliques
 - **Entrar no GitHub** pela própria IDE (código de dispositivo).
 - **☁↑ Enviar:** o aluno escreve só a mensagem; a IDE faz commit e push.
@@ -139,7 +165,7 @@ O ícone **🛢 Banco de Dados** na barra lateral abre a área de manipulação 
 - **Conectar ao GitHub:** cria o repositório na conta do aluno com um clique.
 
 ### Interface
-Em **português do Brasil**, com o menu reduzido a **Arquivo** e **Terminal**, a barra lateral só com **Explorador** e **Pesquisa**, ícones **Material Icon Theme** e autocomplete de Python (**basedpyright**), JavaScript, HTML e CSS.
+Em **português do Brasil**, com o menu reduzido a **Arquivo** e **Terminal**, a barra lateral só com **Explorador**, **Pesquisa** e **Banco de Dados**, ícones **Material Icon Theme** e autocomplete de Python (**basedpyright**), JavaScript, HTML e CSS.
 
 ## Instalação
 

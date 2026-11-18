@@ -9,7 +9,7 @@ const { connect, splitStatements, TYPES } = require('./drivers');
 const { ResultsPanel } = require('./results');
 
 const STORE_KEY = 'devcode.db.connections';
-const ICON = { firebird: 'flame', mysql: 'database', postgres: 'database' };
+const ICON = { firebird: 'flame', mysql: 'database', postgres: 'database', sqlite: 'file' };
 
 class DbManager {
 	constructor(context) {
@@ -29,12 +29,27 @@ class DbManager {
 			{ label: '$(flame) Firebird', description: 'escolha o arquivo .fdb', id: 'firebird' },
 			{ label: '$(database) MySQL', description: 'servidor, usuário e senha', id: 'mysql' },
 			{ label: '$(database) PostgreSQL', description: 'servidor, usuário e senha', id: 'postgres' },
+			{ label: '$(file) SQLite', description: 'um arquivo .db/.sqlite, sem servidor', id: 'sqlite' },
 		], { title: 'Nova conexão: qual banco?', ignoreFocusOut: true });
 		if (!type) { return; }
 		const ask = (title, value, opts = {}) => vscode.window.showInputBox({ title, value, ignoreFocusOut: true, ...opts });
 		const cfg = { id: Math.random().toString(36).slice(2, 10), type: type.id };
 		let password;
-		if (type.id === 'firebird') {
+		if (type.id === 'sqlite') {
+			const pick = await vscode.window.showQuickPick([
+				{ label: '$(folder-opened) Abrir um arquivo SQLite existente', id: 'open' },
+				{ label: '$(new-file) Criar um banco novo (.db)', id: 'create' },
+			], { title: 'SQLite', ignoreFocusOut: true });
+			if (!pick) { return; }
+			const base = vscode.workspace.workspaceFolders?.[0]?.uri;
+			const file = pick.id === 'open'
+				? (await vscode.window.showOpenDialog({ title: 'Escolha o banco SQLite', defaultUri: base, canSelectMany: false, filters: { 'Banco SQLite': ['db', 'sqlite', 'sqlite3', 'db3'] } }))?.[0]
+				: await vscode.window.showSaveDialog({ title: 'Onde criar o banco SQLite?', defaultUri: base ? vscode.Uri.joinPath(base, 'banco.db') : undefined, filters: { 'Banco SQLite': ['db'] } });
+			if (!file) { return; }
+			cfg.database = file.fsPath;
+			password = '';
+			cfg.name = path.basename(cfg.database);
+		} else if (type.id === 'firebird') {
 			const pick = await vscode.window.showQuickPick([
 				{ label: '$(folder-opened) Abrir um arquivo .fdb existente', id: 'open' },
 				{ label: '$(new-file) Criar um banco novo (.fdb)', id: 'create' },

@@ -20,7 +20,7 @@ import { IHostService } from '../../../services/host/browser/host.js';
 
 const BLOCKED_MESSAGE = localize('devcode.clipboardBlocked', "DEV CODE: copiar e colar estão desabilitados. Digite o seu código — é assim que se aprende!");
 
-const MEDIA_FILE = /\.(png|jpe?g|gif|bmp|webp|svg|ico|tiff?|avif|heic|mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|mp4|webm|mkv|mov|avi|wmv|m4v|ogv|fdb)$/i;
+const MEDIA_FILE = /\.(png|jpe?g|gif|bmp|webp|svg|ico|tiff?|avif|heic|mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|mp4|webm|mkv|mov|avi|wmv|m4v|ogv|fdb|db|sqlite|sqlite3|db3)$/i;
 
 class DevCodeClipboardGuard extends Disposable implements IWorkbenchContribution {
 

@@ -10,7 +10,7 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-const TYPES = { firebird: 'Firebird', mysql: 'MySQL', postgres: 'PostgreSQL' };
+const TYPES = { firebird: 'Firebird', mysql: 'MySQL', postgres: 'PostgreSQL', sqlite: 'SQLite' };
 
 // ============================================================================ util
 function normalizeRows(objRows, fields) {
@@ -112,12 +112,33 @@ async function connectFirebird(cfg) {
 		tableTriggers: table => triggerRows(`AND RDB$RELATION_NAME = '${String(table).replace(/'/g, '\'\'')}'`),
 		columns, primaryKey, foreignKeys, indexes,
 		async procedureSource(name) {
-			const r = await rows('SELECT CAST(RDB$PROCEDURE_SOURCE AS VARCHAR(16000)) AS SRC FROM RDB$PROCEDURES WHERE RDB$PROCEDURE_NAME = ?', [name]);
-			return `CREATE OR ALTER PROCEDURE ${name}\n${r[0]?.SRC || ''}`;
+			// VARCHAR(8000): em UTF8 cada caractere ocupa até 4 bytes e o limite do Firebird é 32765 bytes
+			const r = await rows('SELECT CAST(RDB$PROCEDURE_SOURCE AS VARCHAR(8000)) AS SRC FROM RDB$PROCEDURES WHERE RDB$PROCEDURE_NAME = ?', [name]);
+			const params = await rows(`SELECT p.RDB$PARAMETER_NAME AS NAME, p.RDB$PARAMETER_TYPE AS PTYPE, f.RDB$FIELD_TYPE AS FTYPE, f.RDB$FIELD_SUB_TYPE AS SUBTYPE,
+				f.RDB$FIELD_LENGTH AS FLEN, f.RDB$CHARACTER_LENGTH AS CLEN, f.RDB$FIELD_PRECISION AS FPREC, f.RDB$FIELD_SCALE AS FSCALE
+				FROM RDB$PROCEDURE_PARAMETERS p JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = p.RDB$FIELD_SOURCE
+				WHERE p.RDB$PROCEDURE_NAME = ? ORDER BY p.RDB$PARAMETER_TYPE, p.RDB$PARAMETER_NUMBER`, [name]).catch(() => []);
+			const typeOf = r => {
+				let t = FB_TYPES[r.FTYPE] || 'VARCHAR(100)';
+				if (r.FSCALE < 0 && [7, 8, 16, 26].includes(r.FTYPE)) { t = `${r.SUBTYPE === 2 ? 'DECIMAL' : 'NUMERIC'}(${r.FPREC},${-r.FSCALE})`; }
+				else if (r.FTYPE === 37 || r.FTYPE === 14) { t += `(${r.CLEN ?? r.FLEN})`; }
+				return t;
+			};
+			const list = k => params.filter(p => p.PTYPE === k).map(p => `  ${String(p.NAME).trim()} ${typeOf(p)}`).join(',\n');
+			const inp = list(0), out = list(1);
+			return `CREATE OR ALTER PROCEDURE ${name}${inp ? ` (
+${inp}
+)` : ''}${out ? `
+RETURNS (
+${out}
+)` : ''}
+AS
+${r[0]?.SRC || ''}`;
 		},
 		async viewSource(name) {
-			const r = await rows('SELECT CAST(RDB$VIEW_SOURCE AS VARCHAR(16000)) AS SRC FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = ?', [name]);
-			return `CREATE OR ALTER VIEW ${name} AS\n${r[0]?.SRC || ''}`;
+			const r = await rows('SELECT CAST(RDB$VIEW_SOURCE AS VARCHAR(8000)) AS SRC FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = ?', [name]);
+			return `CREATE OR ALTER VIEW ${name} AS
+${r[0]?.SRC || ''}`;
 		},
 		limitSql: (table, n) => `SELECT FIRST ${n} * FROM ${quoteFb(table)}`,
 		countSql: table => `SELECT COUNT(*) AS TOTAL FROM ${quoteFb(table)}`,
@@ -301,11 +322,56 @@ function splitStatements(script, dialect) {
 	return out.filter(s => s.sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim());
 }
 
+// ============================================================================ SQLite (node:sqlite, embutido no Node do DEV CODE)
+async function connectSQLite(cfg) {
+	const { DatabaseSync } = require('node:sqlite');
+	const conn = new DatabaseSync(cfg.database);
+	conn.exec('PRAGMA foreign_keys = ON');
+	const q = n => `"${String(n).replace(/"/g, '""')}"`;
+	const rows = (sql, params = []) => conn.prepare(sql).all(...params);
+	const names = type => rows(`SELECT name FROM sqlite_master WHERE type = ? AND name NOT LIKE 'sqlite_%' ORDER BY 1`, [type]).map(r => r.name);
+	const columns = async table => rows(`PRAGMA table_info(${q(table)})`).map(r => ({ name: r.name, type: r.type || 'ANY', nullable: !r.notnull && !r.pk, default: r.dflt_value }));
+	const primaryKey = async table => rows(`PRAGMA table_info(${q(table)})`).filter(r => r.pk).sort((a, b) => a.pk - b.pk).map(r => r.name);
+	const foreignKeys = async table => groupFk(rows(`PRAGMA foreign_key_list(${q(table)})`).map(r => ({ name: `fk_${table}_${r.id}`, column: r.from, refTable: r.table, refColumn: r.to, onUpdate: r.on_update, onDelete: r.on_delete })));
+	const indexes = async table => rows(`PRAGMA index_list(${q(table)})`).map(i => ({ name: i.name, columns: rows(`PRAGMA index_info(${q(i.name)})`).map(c => c.name), unique: !!i.unique }));
+	const triggerRows = async table => rows(`SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'trigger' ${table ? 'AND tbl_name = ?' : ''} ORDER BY 1`, table ? [table] : [])
+		.map(r => ({ name: r.name, table: r.tbl_name, timing: (/\b(BEFORE|AFTER|INSTEAD OF)\s+(INSERT|UPDATE|DELETE)/i.exec(r.sql) || []).slice(1).join(' ').toUpperCase(), active: true, source: `${r.sql};` }));
+	const source = name => rows(`SELECT sql FROM sqlite_master WHERE name = ?`, [name])[0]?.sql || '';
+	return {
+		type: 'sqlite',
+		async query(sql) {
+			const st = conn.prepare(sql);
+			const cols = st.columns();
+			if (cols.length) {
+				st.setReturnArrays?.(true);
+				const data = st.all();
+				return { columns: cols.map(c => c.name), rows: data.map(r => (Array.isArray(r) ? r : Object.values(r)).map(toCell)) };
+			}
+			const res = st.run();
+			return { columns: [], rows: [], affected: Number(res.changes), info: res.lastInsertRowid ? `id gerado: ${res.lastInsertRowid}` : '' };
+		},
+		tables: async () => names('table'),
+		views: async () => names('view'),
+		procedures: async () => [],
+		sequences: async () => [],
+		triggers: () => triggerRows(),
+		tableTriggers: table => triggerRows(table),
+		columns, primaryKey, foreignKeys, indexes,
+		async procedureSource() { return ''; },
+		async viewSource(name) { return `${source(name)};`; },
+		async ddl(table) { return `${source(table)};`; },
+		limitSql: (table, n) => `SELECT * FROM ${q(table)} LIMIT ${n}`,
+		countSql: table => `SELECT COUNT(*) AS TOTAL FROM ${q(table)}`,
+		close: async () => { try { conn.close(); } catch { } },
+	};
+}
+
 async function connect(cfg) {
 	switch (cfg.type) {
 		case 'firebird': return connectFirebird(cfg);
 		case 'mysql': return connectMySQL(cfg);
 		case 'postgres': return connectPostgres(cfg);
+		case 'sqlite': return connectSQLite(cfg);
 		default: throw new Error(`Tipo de banco desconhecido: ${cfg.type}`);
 	}
 }

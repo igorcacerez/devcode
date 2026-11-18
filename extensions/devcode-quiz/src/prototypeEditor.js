@@ -9,8 +9,14 @@
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { acceptOwnFile } = require('./fileGuard');
 
 const VIEW_TYPE = 'devcode.prototype';
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
+const IMAGE_FILTERS = { 'Imagens': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] };
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+let lastPickDir;
 
 function emptyPrototype() {
 	return {
@@ -22,15 +28,79 @@ function emptyPrototype() {
 	};
 }
 
+function isInsideDir(dir, file) {
+	const rel = path.relative(dir, file);
+	return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/** Nome de arquivo seguro no Windows (sem caracteres proibidos nem nomes reservados). */
+function safeBaseName(name) {
+	let base = path.basename(name, path.extname(name)).replace(/[<>:"/\\|?*\x00-\x1f]+/g, '-').replace(/^[\s.-]+|[\s.]+$/g, '');
+	if (!base) { base = 'imagem'; }
+	if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base)) { base += '_'; }
+	return base;
+}
+
+/**
+ * Grava uma imagem na pasta `imagens/` do projeto e devolve o caminho final.
+ *  - arquivo já dentro de imagens/ → usa o próprio arquivo (não duplica);
+ *  - nome livre → grava com o mesmo nome;
+ *  - nome em uso com o MESMO conteúdo → reaproveita;
+ *  - nome em uso com outro conteúdo → foto-1.png, foto-2.png…
+ */
+function storeImage(dir, name, buf, sourcePath) {
+	if (sourcePath && isInsideDir(dir, sourcePath)) { return sourcePath; }
+	fs.mkdirSync(dir, { recursive: true });
+	const ext = path.extname(name).toLowerCase();
+	const base = safeBaseName(name);
+	for (let i = 0; ; i++) {
+		const file = path.join(dir, `${base}${i ? `-${i}` : ''}${ext}`);
+		if (!fs.existsSync(file)) {
+			acceptOwnFile(file, buf); // o vigia de arquivos precisa aceitar o que o próprio DEV CODE grava
+			fs.writeFileSync(file, buf);
+			return file;
+		}
+		try { if (fs.statSync(file).size === buf.length && fs.readFileSync(file).equals(buf)) { return file; } } catch { /* tenta o próximo nome */ }
+	}
+}
+
+function defaultPickDir() {
+	if (lastPickDir) { return lastPickDir; }
+	const pics = path.join(os.homedir(), 'Pictures');
+	return vscode.Uri.file(fs.existsSync(pics) ? pics : os.homedir());
+}
+
 class PrototypeEditorProvider {
 	constructor(context) { this.context = context; }
 
 	async resolveCustomTextEditor(document, panel) {
 		const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+		const docDir = path.dirname(document.uri.fsPath);
+		const imagesDir = path.join(folder ? folder.uri.fsPath : docDir, 'imagens');
 		const roots = [vscode.Uri.joinPath(this.context.extensionUri, 'media')];
-		if (folder) { roots.push(folder.uri); }
+		roots.push(folder ? folder.uri : vscode.Uri.file(docDir));
 		panel.webview.options = { enableScripts: true, localResourceRoots: roots };
 		panel.webview.html = this.html(panel.webview);
+
+		/** Copia as imagens para imagens/ e devolve { src (relativo ao .devproto), uri (do webview) }. */
+		const importImages = sources => {
+			const items = [], skipped = [], tooBig = [];
+			for (const s of sources) {
+				const name = s.name || path.basename(s.path || '');
+				if (!IMAGE_EXT.test(name)) { skipped.push(name); continue; }
+				try {
+					const buf = s.data !== undefined ? Buffer.from(s.data, 'base64') : fs.readFileSync(s.path);
+					if (buf.length > MAX_IMAGE_BYTES) { tooBig.push(name); continue; }
+					const file = storeImage(imagesDir, name, buf, s.path);
+					items.push({ src: path.relative(docDir, file).split(path.sep).join('/'), uri: panel.webview.asWebviewUri(vscode.Uri.file(file)).toString() });
+				} catch (err) {
+					vscode.window.showErrorMessage(`Protótipo: não foi possível copiar "${name}" para a pasta imagens: ${err.message}`);
+				}
+			}
+			if (skipped.length) { vscode.window.showWarningMessage(`Protótipo: só imagens PNG, JPG, GIF, WEBP ou SVG podem ser inseridas (ignorado: ${skipped.join(', ')}).`); }
+			if (tooBig.length) { vscode.window.showWarningMessage(`Protótipo: imagem grande demais (máx. 25 MB): ${tooBig.join(', ')}.`); }
+			return items;
+		};
 
 		let applyingOwnEdit = false;
 		const send = () => {
@@ -58,18 +128,22 @@ class PrototypeEditorProvider {
 					break;
 				}
 				case 'pickImage': {
-					const base = folder?.uri ?? vscode.Uri.file(path.dirname(document.uri.fsPath));
+					// qualquer pasta do computador: a imagem é copiada para imagens/ do projeto
 					const files = await vscode.window.showOpenDialog({
-						title: 'Escolha uma imagem do projeto', defaultUri: base, canSelectMany: false,
-						filters: { 'Imagens': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] },
+						title: msg.replace ? 'Trocar imagem' : 'Inserir imagem', openLabel: msg.replace ? 'Trocar' : 'Inserir',
+						defaultUri: defaultPickDir(), canSelectMany: !msg.replace, canSelectFolders: false, filters: IMAGE_FILTERS,
 					});
-					if (!files?.[0]) { break; }
-					if (folder && !files[0].fsPath.toLowerCase().startsWith(folder.uri.fsPath.toLowerCase())) {
-						vscode.window.showWarningMessage('DEV CODE: coloque a imagem dentro da pasta do projeto (ex.: pasta "imagens") e escolha de lá.');
-						break;
-					}
-					const rel = path.relative(path.dirname(document.uri.fsPath), files[0].fsPath).split(path.sep).join('/');
-					panel.webview.postMessage({ type: 'imagePicked', src: rel });
+					if (!files?.length) { break; }
+					lastPickDir = vscode.Uri.file(path.dirname(files[0].fsPath));
+					const items = importImages(files.map(f => ({ path: f.fsPath })));
+					if (items.length) { panel.webview.postMessage({ type: 'imagesAdded', items, replace: msg.replace }); }
+					break;
+				}
+				case 'saveImages': {
+					// arrastar e soltar: arquivos lidos no webview (base64) ou URIs (text/uri-list)
+					const uris = (msg.uris || []).map(u => { try { const uri = vscode.Uri.parse(u); return uri.scheme === 'file' ? { path: uri.fsPath } : null; } catch { return null; } }).filter(Boolean);
+					const items = importImages([...(msg.files || []).map(f => ({ name: String(f.name || ''), data: String(f.data || '') })), ...uris]);
+					if (items.length) { panel.webview.postMessage({ type: 'imagesAdded', items, at: msg.at }); }
 					break;
 				}
 				case 'resolveImages': {
@@ -127,9 +201,13 @@ function registerPrototypeEditor(context) {
 		const model = emptyPrototype();
 		model.nodes[0].name = name.trim();
 		await vscode.workspace.fs.writeFile(file, Buffer.from(JSON.stringify(model, null, '\t')));
-		require('./fileGuard').acceptOwnFile(file.fsPath);
+		acceptOwnFile(file.fsPath);
 		await vscode.commands.executeCommand('vscode.openWith', file, VIEW_TYPE);
 	}));
+	// Ctrl+G / Ctrl+Shift+G são tratados dentro do webview (agrupar/desagrupar). Estes comandos vazios só
+	// impedem que a mesma tecla, repassada ao workbench, abra "Ir para a linha" / "Controle do Código-Fonte".
+	context.subscriptions.push(vscode.commands.registerCommand('devcode.prototype.groupKey', () => { /* tratado no webview */ }));
+	context.subscriptions.push(vscode.commands.registerCommand('devcode.prototype.ungroupKey', () => { /* tratado no webview */ }));
 }
 
 module.exports = { registerPrototypeEditor, emptyPrototype, VIEW_TYPE };
