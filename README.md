@@ -52,7 +52,7 @@ Hoje muitos alunos não escrevem código: eles copiam do ChatGPT e colam na IDE.
 ## Como funciona
 
 ### Tela Inicial
-Ao abrir a IDE aparece a **Tela Inicial**, de onde o aluno:
+Ao abrir a IDE aparece a **Tela Inicial**, com os projetos organizados por categoria (**Programação**, **Web**, **Mobile**, **Design e Qualidade**), uma **busca** (ex.: "python", "site", "app"), os **projetos recentes** e atalhos para as **ferramentas** (Cliente de API, Banco de Dados, GitHub e Emulador Android). De lá o aluno:
 
 | Ação | O que acontece |
 |---|---|
@@ -63,6 +63,7 @@ Ao abrir a IDE aparece a **Tela Inicial**, de onde o aluno:
 | ⚛️ **React** | Vite + React, mínimo, **sem TypeScript**. |
 | 📱 **React Native (Expo)** | Template *blank*, **sem TypeScript**. Roda no **emulador Android integrado** (instalação única) ou no celular pelo **Expo Go**. |
 | 🧪 **Teste de Software** | Testes automatizados de sites **estilo Selenium**, 100% visuais: gravar ações, verificações, suítes e **relatório** de sucessos e erros. |
+| 📂 **Projeto em branco** | Só cria a pasta: o aluno monta tudo do zero, em qualquer linguagem. |
 | 🐙 **Projeto do Git** | Lista os repositórios da conta do aluno (ou aceita colar um link) e faz o `git clone`. |
 | 📁 **Projetos recentes** | Reabre projetos criados pelo DEV CODE. |
 
@@ -118,7 +119,7 @@ Na primeira execução de um projeto Expo, o DEV CODE pergunta onde abrir o app.
 - cria o aparelho **DevCode** com 2 GB de RAM;
 - a cada ▶/F5, liga o emulador se precisar e roda `npx expo start --android --localhost`. O Expo instala o Expo Go e **abre o app do aluno no emulador**, sem precisar do celular.
 - A conexão usa `localhost` (via `adb reverse`), então funciona mesmo com o firewall da rede do laboratório bloqueando o IP local.
-- Se a placa de vídeo do computador não suportar o emulador (tela preta e o emulador fecha), o DEV CODE liga de novo com **renderização por software** e lembra a escolha nas próximas vezes. O registro fica em `%TEMP%\devcode-emulator.log`.
+- Se o emulador fechar sozinho (tela preta), o DEV CODE tenta de novo em modos mais compatíveis: renderização por software, tela 720×1280 com menos memória e sem Vulkan, e depois via Direct3D. O modo que funcionar fica salvo para as próximas vezes. O registro, com o código de saída de cada tentativa, fica em `%TEMP%\devcode-emulator.log`.
 
 > Requer virtualização ativada no computador (BIOS + "Plataforma do Hipervisor do Windows"). Também pode ser aberto em **Terminal → Ligar Emulador Android**.
 
@@ -144,7 +145,7 @@ Feito para a matéria de **Teste de Software**. O aluno cria testes automatizado
 1. **Tela Inicial → Novo projeto de Teste**: cria a pasta com `testes.devtest` e `relatorios/`.
 2. Informe a **URL base** do site.
 3. Organize em **suítes** (tipos de teste, ex.: *Login*, *Cadastro*, *Carrinho*), cada uma com seus **casos de teste**.
-4. Clique em **⏺ Gravar**: o Microsoft Edge do computador abre o site e cada **clique, digitação, seleção e Enter** vira uma etapa da tabela. Uma barrinha dentro da página permite adicionar verificações clicando no elemento: **Verificar texto**, **Verificar visível** e **Verificar título**.
+4. Clique em **⏺ Gravar**: o Microsoft Edge do computador abre o site e cada **clique, digitação (inclusive em campos de senha), seleção e Enter** vira uma etapa da tabela. Uma barrinha dentro da página permite adicionar verificações clicando no elemento: **Verificar texto**, **Verificar visível** e **Verificar título**.
 5. Ajuste as etapas na tabela (comando, alvo e valor), arraste para mudar a ordem, adicione ou remova.
 6. **▶ Executar caso**, **Executar suíte** ou **Executar tudo**: cada etapa fica verde (passou) ou vermelha (falhou) ao vivo.
 
@@ -158,6 +159,18 @@ Feito para a matéria de **Teste de Software**. O aluno cria testes automatizado
 - a mensagem de erro em português e a captura de tela de cada falha.
 
 > Usa o Microsoft Edge (ou Google Chrome) já instalado no Windows; nada é baixado.
+
+**Ordem:** etapas, casos de teste e suítes são reordenados arrastando (⠿). Um caso também pode ser arrastado para outra suíte. A execução segue essa ordem.
+
+### Cliente de API (estilo Postman)
+O ícone **Cliente de API** na barra lateral testa APIs sem instalar o Postman ou o Insomnia:
+- **Requisições** GET, POST, PUT, PATCH, DELETE, HEAD e OPTIONS, com **parâmetros** (sincronizados com a URL), **cabeçalhos**, **corpo** (JSON com validação e botão Formatar, texto, formulário `x-www-form-urlencoded` e `multipart` com envio de arquivos) e **autenticação** (Bearer/JWT e Basic).
+- **Resposta** com status colorido (e o significado em português), tempo, tamanho, JSON formatado e colorido, cabeçalhos, imagens; dá para copiar ou salvar em arquivo.
+- **Coleções** para organizar as requisições de cada API, com duplicar, renomear e apagar; **histórico** das últimas 50 requisições enviadas.
+- **Ambientes** com variáveis: `{{base_url}}/usuarios` e `Bearer {{token}}`. Troca de Local para Produção num clique.
+- **Importar cURL** copiado da documentação de uma API.
+- Mensagens de erro explicadas (ex.: "o servidor não está rodando nessa porta").
+- As requisições saem da própria IDE, então não há bloqueio de CORS. Tudo fica salvo na conta do usuário e vale para todos os projetos. Atalho para enviar: **Ctrl+Enter**.
 
 ### Painel GitHub (estilo GitHub Desktop)
 O ícone do GitHub na barra lateral abre um painel com tudo o que o aluno precisa, sem digitar comandos:

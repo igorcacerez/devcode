@@ -514,6 +514,11 @@
           "icon": "media/database.svg"
         },
         {
+          "id": "devcode-api",
+          "title": "Cliente de API",
+          "icon": "media/api.svg"
+        },
+        {
           "id": "devcode-github",
           "title": "GitHub",
           "icon": "media/github.svg"
@@ -521,6 +526,14 @@
       ]
     },
     "views": {
+      "devcode-api": [
+        {
+          "type": "webview",
+          "id": "devcode.api.sidebar",
+          "name": "Cliente de API",
+          "icon": "media/api.svg"
+        }
+      ],
       "devcode-github": [
         {
           "type": "webview",

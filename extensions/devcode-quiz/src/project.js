@@ -137,6 +137,7 @@ async function newProject() {
 		{ label: '$(globe) Novo projeto HTML / CSS / JavaScript', description: 'site com Live Server (recarrega sozinho)', id: 'html' },
 		{ label: '$(symbol-event) Novo projeto React', description: 'Vite + React, mínimo, sem TypeScript', id: 'react' },
 		{ label: '$(device-mobile) Novo projeto React Native (Expo)', description: 'template blank, sem TypeScript', id: 'expo' },
+		{ label: '$(new-folder) Projeto em branco', description: 'só a pasta, você cria tudo do zero', id: 'branco' },
 		{ label: '$(github) Projeto do Git', description: 'cole o link do seu repositório e a IDE baixa (git clone)', id: 'git' },
 	];
 	if (recent.length) {
@@ -155,11 +156,35 @@ async function runProjectAction(id, root) {
 		case 'prototipo': return newPrototypeProject();
 		case 'teste': return newTestProject();
 		case 'html': return newHtmlProject();
+		case 'branco': return newBlankProject();
 		case 'react': return newReactProject(openProject);
 		case 'expo': return newExpoProject(openProject);
 		case 'git': return cloneProject(dir => trustFolder(extContext, dir));
 		case 'open': return vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(root), { forceNewWindow: !!vscode.workspace.workspaceFolders?.length });
 	}
+}
+
+/** Projeto em branco: só cria a pasta (confiável) e abre. */
+async function newBlankProject() {
+	const name = await vscode.window.showInputBox({
+		title: 'Projeto em branco (1/2): nome do projeto',
+		placeHolder: 'meu_projeto',
+		ignoreFocusOut: true,
+		validateInput: v => !v.trim() ? 'Digite um nome' : /[<>:"/\\|?*]/.test(v) ? 'Nome contém caracteres inválidos' : undefined,
+	});
+	if (!name) { return; }
+	const parent = await vscode.window.showOpenDialog({
+		title: 'Projeto em branco (2/2): onde criar a pasta?',
+		openLabel: 'Criar aqui', canSelectFiles: false, canSelectFolders: true, canSelectMany: false,
+	});
+	if (!parent?.[0]) { return; }
+	const dir = path.join(parent[0].fsPath, name.trim());
+	if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
+		vscode.window.showErrorMessage(`DEV CODE: a pasta "${dir}" já existe e não está vazia. Escolha outro nome ou local.`, { modal: true });
+		return;
+	}
+	fs.mkdirSync(dir, { recursive: true });
+	await openProject(dir);
 }
 
 async function newHtmlProject() {
@@ -357,4 +382,4 @@ function recentProjects() {
 	return listTrustedFolders(extContext).slice(0, 8);
 }
 
-module.exports = { initProjects, newProject, newColabProject, newPrototypeProject, newTestProject, runProjectAction, recentProjects, newHtmlProject, newPythonProject, openMainIfEmpty, venvPython };
+module.exports = { initProjects, newProject, newBlankProject, newColabProject, newPrototypeProject, newTestProject, runProjectAction, recentProjects, newHtmlProject, newPythonProject, openMainIfEmpty, venvPython };

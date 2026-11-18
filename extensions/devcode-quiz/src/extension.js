@@ -284,6 +284,7 @@ function activate(context) {
 	initProjects(context);
 	registerFileGuard(context);
 	registerGit(context, { rescan: rescanAll });
+	require('./apiClient').registerApiClient(context);
 	require('./githubPanel').registerGithubPanel(context, dir => require('./fileGuard').trustFolder(context, dir), rescanAll);
 	registerStartPage(context);
 	registerUpdater(context);

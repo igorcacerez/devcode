@@ -1,0 +1,25 @@
+* { box-sizing: border-box; }
+body { margin: 0; padding: 6px 8px 16px; font-family: var(--vscode-font-family); font-size: 13px; color: var(--vscode-foreground); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; }
+input, select { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; padding: 4px 6px; outline: none; width: 100%; }
+.actions { display: flex; gap: 6px; margin: 4px 0 8px; }
+.btn { flex: 1; background: #D10A0A; color: #fff; border-radius: 4px; padding: 6px 8px; font-weight: 600; text-align: center; }
+.btn:hover { filter: brightness(1.1); }
+.btn.sec { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); font-weight: 400; }
+h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--vscode-descriptionForeground); margin: 14px 0 4px; display: flex; justify-content: space-between; align-items: center; }
+h3 button { color: var(--vscode-textLink-foreground); text-transform: none; letter-spacing: 0; font-size: 12px; }
+.row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 3px; cursor: pointer; }
+.row:hover { background: var(--vscode-list-hoverBackground); }
+.row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .tools { display: none; gap: 2px; }
+.row:hover .tools { display: flex; }
+.tools button { color: var(--vscode-descriptionForeground); padding: 0 4px; border-radius: 3px; }
+.tools button:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
+.req { padding-left: 20px; }
+.m { font-size: 10px; font-weight: 700; width: 42px; flex: none; }
+.GET { color: #2f9e44; } .POST { color: #e8a317; } .PUT { color: #1c7ed6; } .PATCH { color: #9c36b5; } .DELETE { color: #e03131; } .HEAD, .OPTIONS { color: #868e96; }
+.muted { color: var(--vscode-descriptionForeground); font-size: 12px; padding: 4px; }
+.vars { display: grid; grid-template-columns: 16px 1fr 1fr 18px; gap: 4px; align-items: center; margin: 4px 0; }
+.vars button { color: var(--vscode-descriptionForeground); }
+.when { color: var(--vscode-descriptionForeground); font-size: 11px; flex: none; }

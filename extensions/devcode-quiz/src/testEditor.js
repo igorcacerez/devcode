@@ -152,6 +152,7 @@ const RECORDER_SCRIPT = String.raw`(() => {
 			if (small) { small.textContent = 'Clique em uma opção e depois no elemento'; }
 			return;
 		}
+		flushInput(); // o texto digitado (ex.: senha) vem antes do clique em "Entrar"
 		if (element.matches?.('input[type="checkbox"],input[type="radio"],select')) { return; }
 		send({ command: 'click', target: locator(element), value: '' });
 	}, true);
@@ -168,16 +169,17 @@ const RECORDER_SCRIPT = String.raw`(() => {
 	};
 	document.addEventListener('input', event => {
 		const element = event.target;
-		if (element.closest?.('#' + toolbarId) || element.matches?.('input[type="checkbox"],input[type="radio"],input[type="password"],input[type="hidden"],input[type="file"],select')) { return; }
+		if (element.closest?.('#' + toolbarId) || element.matches?.('input[type="checkbox"],input[type="radio"],input[type="hidden"],input[type="file"],select')) { return; }
 		pendingInput = { command: 'type', target: locator(element), value: element.isContentEditable ? element.innerText : element.value };
 		clearTimeout(inputTimer);
 		inputTimer = setTimeout(flushInput, 450);
 	}, true);
 	document.addEventListener('focusout', event => {
-		if (pendingInput && event.target === document.activeElement) { flushInput(); }
+		flushInput();
 	}, true);
 	document.addEventListener('keydown', event => {
 		if (event.key === 'Enter' && !event.target.closest?.('#' + toolbarId)) {
+			flushInput();
 			send({ command: 'pressKey', target: locator(event.target), value: 'Enter' });
 		}
 	}, true);

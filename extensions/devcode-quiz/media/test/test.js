@@ -94,10 +94,10 @@
 		selectFirst();
 		const suite = selectedSuite();
 		const testCase = selectedCase();
-		const suites = state.model.suites.map(item => `<div class="suite-item ${item.id === state.suiteId ? 'selected' : ''}">
+		const suites = state.model.suites.map(item => `<div class="suite-item ${item.id === state.suiteId ? 'selected' : ''}" draggable="true" data-drag-suite="${escapeHtml(item.id)}" title="Arraste para mudar a ordem">
 			<button data-action="select-suite" data-suite-id="${escapeHtml(item.id)}">${escapeHtml(item.name || 'Suíte sem nome')}</button>
 			<button class="small-action danger" title="Remover suíte" data-action="remove-suite" data-suite-id="${escapeHtml(item.id)}">×</button></div>
-			<div class="case-list">${(item.cases || []).map(child => `<div class="case-item ${child.id === state.caseId ? 'selected' : ''}">
+			<div class="case-list">${(item.cases || []).map(child => `<div class="case-item ${child.id === state.caseId ? 'selected' : ''}" draggable="true" data-drag-suite="${escapeHtml(item.id)}" data-drag-case="${escapeHtml(child.id)}" title="Arraste para mudar a ordem (ou para outra suíte)"><span class="drag" aria-hidden="true">⠿</span>
 			<button data-action="select-case" data-suite-id="${escapeHtml(item.id)}" data-case-id="${escapeHtml(child.id)}">${escapeHtml(child.name || 'Caso sem nome')}</button>
 			<button class="small-action danger" title="Remover caso" data-action="remove-case" data-suite-id="${escapeHtml(item.id)}" data-case-id="${escapeHtml(child.id)}">×</button></div>`).join('')}
 			<button class="small-action" data-action="add-case" data-suite-id="${escapeHtml(item.id)}">＋ Caso de teste</button></div>`).join('');
@@ -267,6 +267,62 @@
 	app.addEventListener('input', event => {
 		if (event.target.id === 'new-item-name' && state.newItem) { state.newItem.name = event.target.value; }
 	});
+
+	// ---------------------------------------------------------------- arrastar suítes e casos de teste
+	function moveCase(fromSuiteId, caseId, toSuiteId, beforeCaseId, after) {
+		const from = state.model.suites.find(s => s.id === fromSuiteId);
+		const to = state.model.suites.find(s => s.id === toSuiteId);
+		if (!from || !to || caseId === beforeCaseId) { return; }
+		const i = from.cases.findIndex(c => c.id === caseId);
+		if (i < 0) { return; }
+		const [moved] = from.cases.splice(i, 1);
+		let j = beforeCaseId ? to.cases.findIndex(c => c.id === beforeCaseId) : to.cases.length;
+		if (j < 0) { j = to.cases.length; } else if (after) { j++; }
+		to.cases.splice(j, 0, moved);
+		state.suiteId = to.id; state.caseId = moved.id;
+		commit();
+	}
+	function moveSuite(suiteId, targetId, after) {
+		const list = state.model.suites;
+		const i = list.findIndex(s => s.id === suiteId);
+		if (i < 0 || suiteId === targetId) { return; }
+		const [moved] = list.splice(i, 1);
+		let j = list.findIndex(s => s.id === targetId);
+		if (j < 0) { j = list.length; } else if (after) { j++; }
+		list.splice(j, 0, moved);
+		commit();
+	}
+	const isAfter = (event, el) => { const r = el.getBoundingClientRect(); return event.clientY > r.top + r.height / 2; };
+	const clearMarks = () => app.querySelectorAll('.drop-before,.drop-after,.drop-into').forEach(el => el.classList.remove('drop-before', 'drop-after', 'drop-into'));
+	app.addEventListener('dragstart', event => {
+		const item = event.target.closest?.('[data-drag-suite]');
+		if (!item || event.target.closest('.step-row')) { return; }
+		state.dragList = item.dataset.dragCase ? { type: 'case', suiteId: item.dataset.dragSuite, caseId: item.dataset.dragCase } : { type: 'suite', suiteId: item.dataset.dragSuite };
+		item.classList.add('dragging');
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData('text/plain', 'devcode');
+	});
+	app.addEventListener('dragover', event => {
+		const d = state.dragList; if (!d) { return; }
+		const item = event.target.closest('[data-drag-suite]'); if (!item) { return; }
+		const targetIsCase = !!item.dataset.dragCase;
+		if (d.type === 'suite' && targetIsCase) { return; }
+		event.preventDefault();
+		clearMarks();
+		if (d.type === 'case' && !targetIsCase) { item.classList.add('drop-into'); }
+		else { item.classList.add(isAfter(event, item) ? 'drop-after' : 'drop-before'); }
+	});
+	app.addEventListener('drop', event => {
+		const d = state.dragList; if (!d) { return; }
+		const item = event.target.closest('[data-drag-suite]'); if (!item) { return; }
+		event.preventDefault();
+		const after = isAfter(event, item);
+		clearMarks();
+		state.dragList = undefined;
+		if (d.type === 'suite') { if (!item.dataset.dragCase) { moveSuite(d.suiteId, item.dataset.dragSuite, after); } }
+		else { moveCase(d.suiteId, d.caseId, item.dataset.dragSuite, item.dataset.dragCase, after); }
+	});
+	app.addEventListener('dragend', () => { state.dragList = undefined; clearMarks(); app.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging')); });
 
 	app.addEventListener('dragstart', event => {
 		const row = event.target.closest('.step-row');

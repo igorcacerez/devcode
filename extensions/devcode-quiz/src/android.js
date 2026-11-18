@@ -223,20 +223,33 @@ async function runningEmulator(sdk) {
 async function startEmulator() {
 	const sdk = findSdk();
 	if (await runningEmulator(sdk)) { return sdk; }
-	// "-gpu auto" usa a placa de vídeo; em vários PCs de laboratório o driver falha (tela preta e o
-	// emulador fecha). Se o emulador morrer antes de ligar, tentamos de novo com renderização por software.
 	const log = path.join(os.tmpdir(), 'devcode-emulator.log');
-	const modes = gpuSoftware ? ['swiftshader_indirect'] : ['auto', 'swiftshader_indirect'];
+	// Tentativas, da mais rápida para a mais compatível. A 2ª e a 3ª usam tela menor (720x1280, menos memória),
+	// desligam o Vulkan (lavapipe/swiftshader travam em alguns drivers Intel); a 3ª desenha via ANGLE/Direct3D
+	// com 2 núcleos. O modo que ligar fica salvo para as próximas vezes. Tudo vai para %TEMP%\devcode-emulator.log.
+	const LOW = ['-skin', '720x1280', '-memory', '1536', '-feature', '-Vulkan', '-no-snapshot'];
+	const all = [
+		{ id: 'auto', args: ['-gpu', 'auto', '-memory', '2048'] },
+		{ id: 'software', args: ['-gpu', 'swiftshader_indirect', ...LOW] },
+		{ id: 'software-angle', args: ['-gpu', 'angle_indirect', ...LOW, '-cores', '2'] },
+	];
+	const modes = all.slice(Math.max(0, all.findIndex(m => m.id === gpuMode)));
 	await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'DEV CODE: ligando o emulador Android…' }, async progress => {
-		for (const gpu of modes) {
+		for (const mode of modes) {
+			const gpu = mode.id;
+			fs.appendFileSync(log, `
+===== DEV CODE: tentativa "${gpu}" (${new Date().toLocaleString()}) - memória livre: ${Math.round(os.freemem() / 2 ** 20)} MB =====
+`);
 			const out = fs.openSync(log, 'a');
 			const child = cp.spawn(path.join(sdk, 'emulator', exe('emulator')),
-				['-avd', AVD, '-no-boot-anim', '-no-snapshot-load', '-netdelay', 'none', '-netspeed', 'full', '-no-audio', '-gpu', gpu, '-memory', '2048'],
+				['-avd', AVD, '-no-boot-anim', '-no-snapshot-load', '-netdelay', 'none', '-netspeed', 'full', '-no-audio', ...mode.args],
 				{ detached: true, stdio: ['ignore', out, out], env: { ...process.env, ...androidEnv(sdk, findJava()) } });
 			let exited = false;
-			child.on('exit', () => { exited = true; });
+			child.on('exit', (code, signal) => { exited = true; try { fs.appendFileSync(log, `
+===== DEV CODE: o emulador fechou (código ${code}${signal ? `, sinal ${signal}` : ''}) =====
+`); } catch { } });
 			child.unref();
-			if (gpu !== 'auto') { progress.report({ message: 'usando renderização por software…' }); }
+			if (gpu !== 'auto') { progress.report({ message: `tentando o modo compatível (${gpu})…` }); }
 			const start = Date.now();
 			while (!exited && Date.now() - start < 300000) {
 				await new Promise(r => setTimeout(r, 3000));
@@ -244,7 +257,7 @@ async function startEmulator() {
 					const booted = (await adb(sdk, ['shell', 'getprop', 'sys.boot_completed'])).trim();
 					progress.report({ message: booted === '1' ? 'pronto!' : 'iniciando o Android…' });
 					if (booted === '1') {
-						if (gpu !== 'auto') { gpuSoftware = true; extCtx?.globalState.update('devcode.android.gpuSoftware', true); }
+						if (gpu !== gpuMode) { gpuMode = gpu; extCtx?.globalState.update('devcode.android.gpuMode', gpu); }
 						return;
 					}
 				}
@@ -285,11 +298,11 @@ async function prepareForExpo(context) {
 	void context;
 }
 
-let gpuSoftware = false;
+let gpuMode = 'auto';
 let extCtx;
 function registerAndroid(context) {
 	extCtx = context;
-	gpuSoftware = !!context.globalState.get('devcode.android.gpuSoftware');
+	gpuMode = context.globalState.get('devcode.android.gpuMode', 'auto');
 	context.subscriptions.push(
 		vscode.commands.registerCommand('devcode.android.setup', setup),
 		vscode.commands.registerCommand('devcode.android.start', async () => { if (isReady() || await setup()) { await startEmulator().catch(err => vscode.window.showErrorMessage(`DEV CODE: ${err.message}`)); } }),
