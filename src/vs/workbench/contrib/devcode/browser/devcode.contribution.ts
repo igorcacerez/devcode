@@ -12,7 +12,7 @@ import { INotificationService, Severity } from '../../../../platform/notificatio
 import { KeybindingsRegistry, KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
-import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
+import { IWebviewService } from '../../webview/browser/webview.js';
 import { MenuId, MenuRegistry } from '../../../../platform/actions/common/actions.js';
 import { localize } from '../../../../nls.js';
 import { language as platformLanguage } from '../../../../base/common/platform.js';
@@ -84,26 +84,26 @@ registerWorkbenchContribution2(DevCodeClipboardGuard.ID, DevCodeClipboardGuard, 
 CommandsRegistry.registerCommand('devcode.clipboardBlocked', accessor => {
 	accessor.get(INotificationService).notify({ severity: Severity.Warning, message: BLOCKED_MESSAGE });
 });
-// Colar é liberado SOMENTE no Cliente de API (URLs, tokens) e no Teste de Sites (URLs).
-// Nesses dois o foco está dentro do webview (não num editor de código, terminal ou caixa de texto da IDE).
-const PASTE_ALLOWED = ContextKeyExpr.and(
-	ContextKeyExpr.not('editorTextFocus'),
-	ContextKeyExpr.not('terminalFocus'),
-	ContextKeyExpr.not('inputFocus'),
-	ContextKeyExpr.or(
-		ContextKeyExpr.equals('activeWebviewPanelId', 'mainThreadWebview-devcode.api.request'),
-		ContextKeyExpr.equals('activeCustomEditorId', 'devcode.test'),
-		ContextKeyExpr.equals('focusedView', 'devcode.api.sidebar'),
-	),
-);
-for (const [primary, isPaste] of [
-	[KeyMod.CtrlCmd | KeyCode.KeyV, true], [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyV, true], [KeyMod.Shift | KeyCode.Insert, true],
-	[KeyMod.CtrlCmd | KeyCode.KeyC, false], [KeyMod.CtrlCmd | KeyCode.Insert, false], [KeyMod.CtrlCmd | KeyCode.KeyX, false], [KeyMod.Shift | KeyCode.Delete, false],
+// Colar é liberado SOMENTE no Cliente de API (URLs, tokens) e no Teste de Sites (URLs):
+// o atalho de colar cai aqui; se o foco está num desses webviews, o texto é colado nele.
+const PASTE_ALLOWED_VIEW_TYPES = new Set(['devcode.api.request', 'devcode.api.sidebar', 'devcode.test']);
+CommandsRegistry.registerCommand('devcode.pasteGuard', accessor => {
+	const webview = accessor.get(IWebviewService).activeWebview;
+	const viewType = webview?.providedViewType?.replace(/^mainThreadWebview-/, '');
+	if (webview && viewType && PASTE_ALLOWED_VIEW_TYPES.has(viewType)) {
+		webview.paste();
+		return;
+	}
+	accessor.get(INotificationService).notify({ severity: Severity.Warning, message: BLOCKED_MESSAGE });
+});
+for (const [primary, id] of [
+	[KeyMod.CtrlCmd | KeyCode.KeyV, 'devcode.pasteGuard'], [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyV, 'devcode.pasteGuard'], [KeyMod.Shift | KeyCode.Insert, 'devcode.pasteGuard'],
+	[KeyMod.CtrlCmd | KeyCode.KeyC, 'devcode.clipboardBlocked'], [KeyMod.CtrlCmd | KeyCode.Insert, 'devcode.clipboardBlocked'], [KeyMod.CtrlCmd | KeyCode.KeyX, 'devcode.clipboardBlocked'], [KeyMod.Shift | KeyCode.Delete, 'devcode.clipboardBlocked'],
 ] as const) {
 	KeybindingsRegistry.registerKeybindingRule({
-		id: 'devcode.clipboardBlocked',
+		id,
 		weight: KeybindingWeight.ExternalExtension + 1000, // vence keybindings do usuário e de extensões
-		when: isPaste ? PASTE_ALLOWED?.negate() : undefined,
+		when: undefined,
 		primary,
 	});
 }
