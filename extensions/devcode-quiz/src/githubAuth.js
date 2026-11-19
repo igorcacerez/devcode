@@ -61,14 +61,17 @@ async function login() {
 
 async function logout() {
 	if (!session) { return; }
-	const ok = await vscode.window.showWarningMessage(`Sair da conta ${session.account.label} do GitHub?`, { modal: true }, 'Sair');
-	if (ok !== 'Sair') { return; }
-	// remove a conta da IDE (computador compartilhado do laboratório)
-	await vscode.commands.executeCommand('workbench.action.removeAccountSession', { providerId: 'github', accountLabel: session.account.label })
-		.then(undefined, () => undefined);
-	session = undefined;
+	const label = session.account.label;
+	// remove a conta da IDE (computador compartilhado do laboratório); o comando já pede confirmação
+	try {
+		await vscode.commands.executeCommand('_signOutOfAccount', { providerId: 'github', accountLabel: label });
+	} catch (err) {
+		vscode.window.showErrorMessage(`DEV CODE: não foi possível sair do GitHub. ${err.message || err}`);
+	}
 	await getSession(false);
-	updateAccountItem();
+	if (!session) {
+		vscode.window.showInformationMessage(`DEV CODE: a conta ${label} foi desconectada deste computador.`);
+	}
 }
 
 const listeners = [];
