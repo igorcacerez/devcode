@@ -15,6 +15,7 @@ const { cloneProject } = require('./git');
 const { newReactProject, newExpoProject } = require('./jsProjects');
 const { emptyPrototype } = require('./prototypeEditor');
 const { emptyTestProject } = require('./testEditor');
+const { emptyDiagram } = require('./diagramEditor');
 
 let extContext;
 function initProjects(context) { extContext = context; }
@@ -133,6 +134,7 @@ async function newProject() {
 		{ label: '$(symbol-method) Novo projeto Python', description: 'com ambiente virtual (.venv), estilo PyCharm', id: 'python' },
 		{ label: '$(notebook) Novo projeto Colab (notebook Python)', description: 'células de código com o resultado embaixo, como no Google Colab', id: 'colab' },
 		{ label: '$(symbol-color) Novo Protótipo (telas, estilo Figma)', description: 'desenhe as telas do app/site: frames, camadas e estilos', id: 'prototipo' },
+		{ label: '$(type-hierarchy) Novo projeto de Diagramas (estilo Visio)', description: 'fluxogramas, diagrama de classes, modelagem de banco (DER), casos de uso', id: 'diagrama' },
 		{ label: '$(beaker) Novo projeto de Teste (estilo Selenium)', description: 'grave e rode testes de sites sem programar', id: 'teste' },
 		{ label: '$(globe) Novo projeto HTML / CSS / JavaScript', description: 'site com Live Server (recarrega sozinho)', id: 'html' },
 		{ label: '$(symbol-event) Novo projeto React', description: 'Vite + React, mínimo, sem TypeScript', id: 'react' },
@@ -155,6 +157,7 @@ async function runProjectAction(id, root) {
 		case 'colab': return newColabProject();
 		case 'prototipo': return newPrototypeProject();
 		case 'teste': return newTestProject();
+		case 'diagrama': return newDiagramProject();
 		case 'html': return newHtmlProject();
 		case 'branco': return newBlankProject();
 		case 'react': return newReactProject(openProject);
@@ -255,6 +258,27 @@ async function newPrototypeProject() {
 	model.nodes[0].name = 'Tela inicial (Mobile)';
 	fs.writeFileSync(path.join(dir, 'telas.devproto'), JSON.stringify(model, null, '\t'));
 	fs.writeFileSync(path.join(dir, '.vscode', 'settings.json'), JSON.stringify({ 'devcode.projectType': 'prototipo' }, null, '\t'));
+	await openProject(dir);
+}
+
+/** Projeto de diagramas: um arquivo .devdiagram com páginas (fluxograma, classes, banco...). */
+async function newDiagramProject() {
+	const name = await vscode.window.showInputBox({
+		title: 'Novo Projeto de Diagramas (1/2): nome do projeto', placeHolder: 'diagramas-da-aula', ignoreFocusOut: true,
+		validateInput: v => !v.trim() ? 'Digite um nome' : /[<>:"/\|?*]/.test(v) ? 'Nome contém caracteres inválidos' : undefined,
+	});
+	if (!name) { return; }
+	const parent = await vscode.window.showOpenDialog({ title: 'Novo Projeto de Diagramas (2/2): onde criar o projeto?', openLabel: 'Criar aqui', canSelectFiles: false, canSelectFolders: true, canSelectMany: false });
+	if (!parent?.[0]) { return; }
+	const dir = path.join(parent[0].fsPath, name.trim());
+	if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
+		vscode.window.showErrorMessage(`DEV CODE: a pasta "${dir}" já existe e não está vazia. Escolha outro nome ou local.`, { modal: true });
+		return;
+	}
+	fs.mkdirSync(path.join(dir, '.vscode'), { recursive: true });
+	fs.mkdirSync(path.join(dir, 'exportacoes'), { recursive: true });
+	fs.writeFileSync(path.join(dir, 'diagramas.devdiagram'), JSON.stringify(emptyDiagram('Fluxograma'), null, '	'));
+	fs.writeFileSync(path.join(dir, '.vscode', 'settings.json'), JSON.stringify({ 'devcode.projectType': 'diagrama' }, null, '	'));
 	await openProject(dir);
 }
 
@@ -361,11 +385,13 @@ async function newPythonProject(kind = 'python') {
 function openMainIfEmpty() {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder || vscode.window.visibleTextEditors.length) { return; }
-	for (const f of ['telas.devproto', 'testes.devtest', 'aula.ipynb', 'main.py', 'index.html', 'src/App.jsx', 'App.js']) {
+	for (const f of ['telas.devproto', 'testes.devtest', 'diagramas.devdiagram', 'aula.ipynb', 'main.py', 'index.html', 'src/App.jsx', 'App.js']) {
 		const main = path.join(folder.uri.fsPath, f);
 		if (fs.existsSync(main) && fs.statSync(main).size < 4000) {
 			if (f.endsWith('.devproto')) {
 				vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(main), 'devcode.prototype');
+			} else if (f.endsWith('.devdiagram')) {
+				vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(main), 'devcode.diagram');
 			} else if (f.endsWith('.devtest')) {
 				vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(main), 'devcode.test');
 			} else if (f.endsWith('.ipynb')) {
@@ -382,4 +408,4 @@ function recentProjects() {
 	return listTrustedFolders(extContext).slice(0, 8);
 }
 
-module.exports = { initProjects, newProject, newBlankProject, newColabProject, newPrototypeProject, newTestProject, runProjectAction, recentProjects, newHtmlProject, newPythonProject, openMainIfEmpty, venvPython };
+module.exports = { initProjects, newProject, newBlankProject, newColabProject, newPrototypeProject, newTestProject, newDiagramProject, runProjectAction, recentProjects, newHtmlProject, newPythonProject, openMainIfEmpty, venvPython };

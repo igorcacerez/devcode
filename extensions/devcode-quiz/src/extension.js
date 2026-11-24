@@ -26,6 +26,7 @@ const { registerUpdater } = require('./updater');
 const { registerEnvFix } = require('./envFix');
 const { registerPrototypeEditor } = require('./prototypeEditor');
 const { registerTestEditor } = require('./testEditor');
+const { registerDiagramEditor } = require('./diagramEditor');
 const { registerAndroid, prepareForExpo } = require('./android');
 const { registerDatabase } = require('./db');
 const { DEV_COMMANDS } = require('./jsProjects');
@@ -290,6 +291,7 @@ function activate(context) {
 	registerUpdater(context);
 	registerPrototypeEditor(context);
 	registerTestEditor(context);
+	registerDiagramEditor(context);
 	registerAndroid(context);
 	registerDatabase(context);
 	// notebooks estilo Colab: pergunta antes de rodar cada célula alterada

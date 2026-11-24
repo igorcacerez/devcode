@@ -24,7 +24,7 @@ const cp = require('child_process');
 const MEDIA = /\.(png|jpe?g|gif|bmp|webp|svg|ico|tiff?|avif|heic|mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|mp4|webm|mkv|mov|avi|wmv|m4v|ogv|fdb|db|sqlite|sqlite3|db3|db-journal|db-wal|db-shm)$/i;
 
 /** Arquivos protegidos: código-fonte e afins. Dados gerados por programas (.txt, .csv…) ficam livres. */
-const CODE = /\.(py|pyw|pyi|ipynb|js|mjs|cjs|jsx|ts|tsx|html?|css|scss|sass|less|php|c|h|cpp|cc|cxx|hpp|hh|cs|java|kt|kts|go|rs|rb|swift|dart|lua|r|pl|sh|bash|ps1|psm1|bat|cmd|vue|svelte|sql|json|jsonc|xml|yaml|yml|toml|md|ini|cfg|devproto|devtest)$/i;
+const CODE = /\.(py|pyw|pyi|ipynb|js|mjs|cjs|jsx|ts|tsx|html?|css|scss|sass|less|php|c|h|cpp|cc|cxx|hpp|hh|cs|java|kt|kts|go|rs|rb|swift|dart|lua|r|pl|sh|bash|ps1|psm1|bat|cmd|vue|svelte|sql|json|jsonc|xml|yaml|yml|toml|md|ini|cfg|devproto|devtest|devdiagram)$/i;
 
 /** Pastas ignoradas (ambientes, dependências, saídas de build). */
 const IGNORED_DIRS = new Set(['.expo', '.venv', 'venv', 'env', 'node_modules', '__pycache__', '.git', '.idea', '.pytest_cache', '.mypy_cache', 'bin', 'obj', 'out', 'dist', 'build', 'target']);

@@ -164,6 +164,15 @@ Feito para a matéria de **Teste de Software**. O aluno cria testes automatizado
 
 **Ordem:** etapas, casos de teste e suítes são reordenados arrastando (⠿). Um caso também pode ser arrastado para outra suíte. A execução segue essa ordem.
 
+### Diagramas (estilo Microsoft Visio)
+Novo tipo de projeto **Diagramas** para as aulas de modelagem. O aluno arrasta formas da esquerda para a página e liga uma na outra puxando os pontos azuis:
+- **Fluxograma:** início/fim, processo, decisão, entrada/saída, documento, sub-processo, preparação, banco de dados e conector.
+- **Diagrama de classes (UML):** classe, interface, classe abstrata, enum, pacote e nota. Atributos e métodos um por linha; a classe cresce sozinha. Ligações de associação, herança, implementação, dependência, agregação e composição.
+- **Banco de dados (DER):** tabela com colunas `nome TIPO PK/FK` (chaves destacadas), entidade, entidade fraca, relacionamento e atributos. Ligações 1:1, 1:N, N:N e 0:N com pé de galinha.
+- **Casos de uso:** ator, caso de uso e sistema (o que está dentro do sistema se move junto).
+- Ligações em ângulo reto que acompanham as formas, com texto no meio e nas pontas (ex.: "Sim"/"Não", "1"/"*"). Soltar a ligação no vazio cria uma forma nova já ligada.
+- Dois cliques para escrever, cores, alinhamento, guias, zoom, várias **páginas** no mesmo arquivo e exportação para **PNG** ou **SVG** (pasta `exportacoes`).
+
 ### Cliente de API (estilo Postman)
 O ícone **Cliente de API** na barra lateral testa APIs sem instalar o Postman ou o Insomnia:
 - **Requisições** GET, POST, PUT, PATCH, DELETE, HEAD e OPTIONS, com **parâmetros** (sincronizados com a URL), **cabeçalhos**, **corpo** (JSON com validação e botão Formatar, texto, formulário `x-www-form-urlencoded` e `multipart` com envio de arquivos) e **autenticação** (Bearer/JWT e Basic).

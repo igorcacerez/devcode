@@ -27,6 +27,7 @@ const CARDS = [
 	{ id: 'react', cat: 'web', icon: '⚛️', title: 'React', desc: 'Vite + React, mínimo e sem TypeScript.', tags: ['React', 'Vite'] },
 	{ id: 'expo', cat: 'mobile', icon: '📱', title: 'React Native (Expo)', desc: 'App de celular que abre no emulador Android ou no Expo Go.', tags: ['React Native', 'Android'] },
 	{ id: 'prototipo', cat: 'design', icon: '🎨', title: 'Protótipo (telas)', desc: 'Desenhe as telas antes de programar: frames, camadas e estilos.', tags: ['Figma'] },
+	{ id: 'diagrama', cat: 'design', icon: '🧩', title: 'Diagramas', desc: 'Fluxogramas, diagrama de classes (UML), modelagem de banco (DER) e casos de uso.', tags: ['Visio', 'UML', 'DER'] },
 	{ id: 'teste', cat: 'design', icon: '🧪', title: 'Teste de Sites', desc: 'Grave testes clicando no site e veja o relatório de sucessos e falhas.', tags: ['Selenium'] },
 ];
 

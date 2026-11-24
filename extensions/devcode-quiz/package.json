@@ -17,6 +17,7 @@
     "onNotebook:jupyter-notebook",
     "onCustomEditor:devcode.prototype",
     "onCustomEditor:devcode.test",
+    "onCustomEditor:devcode.diagram",
     "onView:devcode.db.explorer",
     "onLanguage:sql"
   ],
@@ -501,6 +502,16 @@
         "selector": [
           {
             "filenamePattern": "*.devtest"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "devcode.diagram",
+        "displayName": "DEV CODE: Diagramas",
+        "selector": [
+          {
+            "filenamePattern": "*.devdiagram"
           }
         ],
         "priority": "default"
