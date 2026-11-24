@@ -2,7 +2,7 @@
  *  DEV CODE - Git simplificado (só cliques).
  *    - Projeto do Git: cola o link → escolhe a pasta → a IDE faz o clone e abre.
  *    - ☁↑ Enviar (commit + push): pede só a mensagem.
- *    - ☁↓ Atualizar (pull): baixa as mudanças; os arquivos vindos do git são aceitos.
+ *    - ☁↓ Atualizar (pull): baixa as mudanças; commits assinados ou repositórios confiados são aceitos.
  *  Git pelo terminal é bloqueado (terminalGuard) — tudo passa por aqui ou pela aba Source Control.
  *--------------------------------------------------------------------------------------------*/
 'use strict';
@@ -12,6 +12,9 @@ const cp = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const gh = require('./githubAuth');
+const authorship = require('./authorship');
+const signature = require('./signature');
+let extensionPath;
 
 /** git com rede (clone/push/pull): usa a conta do GitHub logada na IDE, se houver. */
 function gitNet(args, cwd, timeout = 600000) {
@@ -42,7 +45,7 @@ function repoNameFromUrl(url) {
 }
 
 /** Projeto do Git: clona e registra a pasta como projeto confiável. */
-async function cloneProject(trustFolder, presetUrl) {
+async function cloneProject(trustFolderChecked, presetUrl) {
 	if (!(await gitAvailable())) { return; }
 	let url = presetUrl;
 	const repos = url ? [] : await gh.listRepos();
@@ -56,7 +59,7 @@ async function cloneProject(trustFolder, presetUrl) {
 		const pick = await vscode.window.showQuickPick(items, { title: 'Projeto do Git: qual projeto você quer baixar?', ignoreFocusOut: true, matchOnDescription: true });
 		if (!pick) { return; }
 		if (pick.id === 'login') {
-			if (await gh.login()) { return cloneProject(trustFolder); }
+			if (await gh.login()) { return cloneProject(trustFolderChecked); }
 			return;
 		}
 		url = pick.url;
@@ -88,7 +91,7 @@ async function cloneProject(trustFolder, presetUrl) {
 		vscode.window.showErrorMessage(`DEV CODE: não foi possível baixar o projeto.\n${r.err}`, { modal: true });
 		return;
 	}
-	trustFolder(dir);
+	await trustFolderChecked(dir);
 	await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(dir), { forceNewWindow: !!vscode.workspace.workspaceFolders?.length });
 }
 
@@ -145,6 +148,10 @@ async function commitAndPush() {
 		vscode.window.showErrorMessage(`DEV CODE: falha ao salvar (commit).\n${commit.err || commit.out}`, { modal: true });
 		return;
 	}
+	if (!(await authorship.signHeadCommit(repo))) {
+		vscode.window.showErrorMessage('DEV CODE: o commit foi criado, mas não foi possível assinar suas alterações. O envio foi cancelado.', { modal: true });
+		return;
+	}
 	return push(repo, 'Enviando para o GitHub…');
 }
 
@@ -175,6 +182,9 @@ async function pull(rescan) {
 	await vscode.workspace.saveAll(false);
 	const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'DEV CODE: baixando atualizações do GitHub…' },
 		() => gitNet(['pull', '--no-rebase', '--no-edit'], repo, 300000));
+	if (r.ok && (await signature.headParentCount(repo)) >= 2) {
+		await signature.signHead(repo);
+	}
 	if (rescan) { await rescan(); }
 	if (r.ok) {
 		vscode.window.showInformationMessage(/Already up to date|Já está atualizado/i.test(r.out) ? 'DEV CODE: o projeto já está atualizado.' : '$(check) DEV CODE: projeto atualizado!');
@@ -229,6 +239,7 @@ async function connectRemote() {
 			fs.writeFileSync(path.join(folder, '.gitignore'), '.venv/\n__pycache__/\nnode_modules/\n');
 		}
 	}
+	await authorship.installHooks(folder, extensionPath);
 	await run(folder, ['remote', 'remove', 'origin']);
 	await run(folder, ['remote', 'add', 'origin', url.trim()]);
 	updateStatusBar();
@@ -247,6 +258,7 @@ function updateStatusBar() {
 }
 
 function registerGit(context, { rescan }) {
+	extensionPath = context.extensionPath;
 	gh.registerGithubAuth(context);
 	pushItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
 	pullItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 49);

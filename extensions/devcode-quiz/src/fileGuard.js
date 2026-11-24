@@ -4,6 +4,8 @@
  *  Todo arquivo de código do projeto precisa ter "nascido" dentro da IDE:
  *    - criado pelo Explorer / assistente de projeto (vazio), ou
  *    - salvo pelo editor (o conteúdo no disco é igual ao que o editor salvou).
+ *  Arquivos recebidos do Git entram apenas quando o commit tem assinatura do DEV CODE
+ *  ou o repositório foi confiado pelo professor; os demais vão para a quarentena.
  *  Se um arquivo de código aparece ou muda no disco por fora (colado pelo Windows Explorer,
  *  baixado do navegador direto na pasta, copiado de um pendrive…):
  *    - arquivo NOVO   → é excluído (vai para a lixeira);
@@ -27,7 +29,8 @@ const MEDIA = /\.(png|jpe?g|gif|bmp|webp|svg|ico|tiff?|avif|heic|mp3|wav|ogg|oga
 const CODE = /\.(py|pyw|pyi|ipynb|js|mjs|cjs|jsx|ts|tsx|html?|css|scss|sass|less|php|c|h|cpp|cc|cxx|hpp|hh|cs|java|kt|kts|go|rs|rb|swift|dart|lua|r|pl|sh|bash|ps1|psm1|bat|cmd|vue|svelte|sql|json|jsonc|xml|yaml|yml|toml|md|ini|cfg|devproto|devtest|devdiagram)$/i;
 
 /** Pastas ignoradas (ambientes, dependências, saídas de build). */
-const IGNORED_DIRS = new Set(['.expo', '.venv', 'venv', 'env', 'node_modules', '__pycache__', '.git', '.idea', '.pytest_cache', '.mypy_cache', 'bin', 'obj', 'out', 'dist', 'build', 'target']);
+const IGNORED_DIRS = new Set(['.expo', '.venv', 'venv', 'env', 'node_modules', '__pycache__', '.git', '.devcode', '.idea', '.pytest_cache', '.mypy_cache', 'bin', 'obj', 'out', 'dist', 'build', 'target']);
+const QUARANTINE_REASON = 'Commit sem assinatura do DEV CODE (feito fora da IDE)';
 
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
 const stripBom = b => (b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) ? b.subarray(3) : b;
@@ -53,6 +56,70 @@ function stateDirFor(context, root) {
 	return path.join(context.globalStorageUri.fsPath, 'fileguard', folderKey(root));
 }
 
+function normalizeRel(rel) {
+	return String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function safeRel(rel) {
+	const value = normalizeRel(rel);
+	return !!value && !value.split('/').some(part => !part || part === '.' || part === '..');
+}
+
+function quarantineIndexPath(stateDir) {
+	return path.join(stateDir, 'quarantine.json');
+}
+
+function quarantineContentPath(stateDir, rel) {
+	return path.join(stateDir, 'quarantine', sha(normalizeRel(rel)));
+}
+
+function readQuarantine(context, root) {
+	try {
+		const items = JSON.parse(fs.readFileSync(quarantineIndexPath(stateDirFor(context, root)), 'utf8'));
+		return Array.isArray(items) ? items.filter(item => item && safeRel(item.rel)) : [];
+	} catch { return []; }
+}
+
+function saveQuarantined(context, root, rel, content) {
+	rel = normalizeRel(rel);
+	if (!safeRel(rel)) { throw new Error('Caminho inválido para quarentena.'); }
+	const stateDir = stateDirFor(context, root);
+	const file = quarantineContentPath(stateDir, rel);
+	const buf = Buffer.isBuffer(content) ? content : Buffer.from(content);
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	fs.writeFileSync(file, buf);
+	const entry = {
+		rel,
+		savedAt: new Date().toISOString(),
+		size: buf.length,
+		lines: require('./authorship').countLines(buf),
+		reason: QUARANTINE_REASON,
+	};
+	const items = readQuarantine(context, root).filter(item => item.rel !== rel);
+	items.push(entry);
+	fs.writeFileSync(quarantineIndexPath(stateDir), JSON.stringify(items, null, '\t') + '\n', 'utf8');
+	require('./authorship').recordQuarantine(root, rel, buf);
+	try { vscode.commands.executeCommand('devcode.quarantine.refresh').then(undefined, () => {}); } catch { /* interface ainda não registrada */ }
+	return entry;
+}
+
+function loadQuarantined(context, root, rel) {
+	if (!safeRel(rel)) { return undefined; }
+	try { return fs.readFileSync(quarantineContentPath(stateDirFor(context, root), rel)); } catch { return undefined; }
+}
+
+function removeQuarantined(context, root, rel) {
+	if (!safeRel(rel)) { return false; }
+	const stateDir = stateDirFor(context, root);
+	const items = readQuarantine(context, root);
+	const next = items.filter(item => item.rel !== normalizeRel(rel));
+	if (next.length === items.length) { return false; }
+	try { fs.unlinkSync(quarantineContentPath(stateDir, rel)); } catch { /* o índice ainda pode ser limpo */ }
+	fs.writeFileSync(quarantineIndexPath(stateDir), JSON.stringify(next, null, '\t') + '\n', 'utf8');
+	try { vscode.commands.executeCommand('devcode.quarantine.refresh').then(undefined, () => {}); } catch { /* interface ainda não registrada */ }
+	return true;
+}
+
 function walkGuarded(root, dir, out) {
 	let entries;
 	try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
@@ -69,7 +136,8 @@ function walkGuarded(root, dir, out) {
 
 /**
  * Registra uma pasta como projeto confiável do DEV CODE, com o conteúdo atual como base.
- * Só é chamado pelo próprio DEV CODE: assistente de Novo Projeto e clone pelo Git.
+ * Só é chamado pelo próprio DEV CODE: assistente de Novo Projeto.
+ * Clones usam trustFolderChecked para validar cada arquivo antes de registrá-lo.
  */
 function trustFolder(context, root) {
 	const stateDir = stateDirFor(context, root);
@@ -116,11 +184,86 @@ function git(cwd, args) {
 async function matchesGitHead(root, file) {
 	const rel = path.relative(root, file).split(path.sep).join('/');
 	const [headBlob, diskBlob] = await Promise.all([git(root, ['rev-parse', `HEAD:./${rel}`]), git(root, ['hash-object', '--', rel])]);
-	return !!headBlob && headBlob === diskBlob;
+	return !!headBlob && headBlob === diskBlob ? headBlob : undefined;
+}
+
+async function isBlobAcceptedFromGit(root, rel, blob) {
+	const authorship = require('./authorship');
+	const [trusted, signed] = await Promise.all([
+		authorship.isRepoTrusted(root),
+		authorship.isBlobFromSignedCommit(root, rel, blob),
+	]);
+	return { trusted, signed, accepted: trusted || signed };
+}
+
+async function warnQuarantine(rels) {
+	if (!rels.length) { return; }
+	const button = 'Ver quarentena';
+	const choice = await vscode.window.showWarningMessage(
+		`Estes arquivos vieram do GitHub mas não foram digitados no DEV CODE e foram para a QUARENTENA: ${rels.join(', ')}. Você pode ver o conteúdo em 'Quarentena', mas precisa digitar de novo. Só o professor pode liberar.`,
+		{ modal: true }, button);
+	if (choice === button) { await vscode.commands.executeCommand('devcode.quarantine.show'); }
+}
+
+async function trustFolderChecked(context, root) {
+	const stateDir = stateDirFor(context, root);
+	const snapDir = path.join(stateDir, 'snapshots');
+	fs.rmSync(stateDir, { recursive: true, force: true });
+	fs.mkdirSync(snapDir, { recursive: true });
+	const authorship = require('./authorship');
+	await authorship.installHooks(root, context.extensionPath);
+	const trustedRepo = await authorship.isRepoTrusted(root);
+	const manifest = {};
+	const quarantined = [];
+	for (const file of walkGuarded(root, root, [])) {
+		const rel = path.relative(root, file).split(path.sep).join('/');
+		const buf = fs.readFileSync(file);
+		const blob = await matchesGitHead(root, file);
+		const signed = blob ? await authorship.isBlobFromSignedCommit(root, rel, blob) : false;
+		if (blob && (trustedRepo || signed)) {
+			manifest[rel] = sha(stripBom(buf));
+			fs.writeFileSync(path.join(snapDir, sha(rel)), buf);
+			if (signed) { authorship.recordReceivedSigned(root, rel, buf); }
+			continue;
+		}
+		saveQuarantined(context, root, rel, buf);
+		try { fs.unlinkSync(file); } catch {
+			try { await vscode.workspace.fs.delete(vscode.Uri.file(file), { useTrash: true }); } catch {
+				try { fs.unlinkSync(file); } catch { /* sem permissão */ }
+			}
+		}
+		quarantined.push(rel);
+	}
+	fs.writeFileSync(path.join(stateDir, 'manifest.json'), JSON.stringify(manifest));
+	fs.writeFileSync(path.join(stateDir, 'folder.json'), JSON.stringify({ root, trustedAt: new Date().toISOString() }));
+	try { vscode.commands.executeCommand('devcode.quarantine.refresh').then(undefined, () => {}); } catch { /* interface ainda não registrada */ }
+	if (quarantined.length) { await warnQuarantine(quarantined); }
+	return quarantined;
+}
+
+function acceptQuarantinedFile(context, root, file, content) {
+	for (const guard of guards) {
+		if (path.resolve(guard.root) === path.resolve(root) && isGuarded(guard.root, file)) {
+			guard.accept(file, content);
+			return;
+		}
+	}
+	const rel = path.relative(root, file).split(path.sep).join('/');
+	if (!isGuarded(root, file) || !safeRel(rel)) { throw new Error('Arquivo fora do projeto ou não protegido.'); }
+	const stateDir = stateDirFor(context, root);
+	const manifestFile = path.join(stateDir, 'manifest.json');
+	let manifest = {};
+	try { manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')); } catch { /* ainda sem manifesto */ }
+	const snapDir = path.join(stateDir, 'snapshots');
+	fs.mkdirSync(snapDir, { recursive: true });
+	manifest[rel] = sha(stripBom(content));
+	fs.writeFileSync(path.join(snapDir, sha(rel)), content);
+	fs.writeFileSync(manifestFile, JSON.stringify(manifest));
 }
 
 class FileGuard {
 	constructor(context, folder) {
+		this.context = context;
 		this.root = folder.uri.fsPath;
 		this.stateDir = stateDirFor(context, this.root);
 		this.snapDir = path.join(this.stateDir, 'snapshots');
@@ -196,23 +339,25 @@ class FileGuard {
 		}
 		const files = [];
 		this.walk(this.root, files);
-		const removed = [], restored = [];
+		const removed = [], restored = [], quarantined = [];
 		for (const f of files) {
 			const r = await this.verify(f, { silent: true });
 			if (r === 'removed') { removed.push(this.rel(f)); }
 			if (r === 'restored') { restored.push(this.rel(f)); }
+			if (r === 'quarantined') { quarantined.push(this.rel(f)); }
 		}
 		// entradas de arquivos que não existem mais
 		for (const rel of Object.keys(this.manifest)) {
 			if (!fs.existsSync(path.join(this.root, rel))) { this.forget(path.join(this.root, rel)); }
 		}
 		this.report(removed, restored);
+		await warnQuarantine(quarantined);
 		return true;
 	}
 
 	// ------------------------------------------------------------------ verificação
 
-	/** @returns {'ok'|'accepted'|'removed'|'restored'|'skipped'} */
+	/** @returns {'ok'|'accepted'|'removed'|'restored'|'quarantined'|'skipped'} */
 	async verify(file, { silent } = {}) {
 		if (!isGuarded(this.root, file) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { return 'skipped'; }
 		const buf = fs.readFileSync(file);
@@ -235,10 +380,33 @@ class FileGuard {
 			return 'accepted';
 		}
 
-		// 3) Igual ao último commit do git (git pull / clone / checkout feitos pela IDE)
-		if (await matchesGitHead(this.root, file)) {
-			this.accept(file, buf);
-			return 'accepted';
+		// 3) Igual ao último commit: só entra no manifesto se veio de commit assinado ou repo confiável
+		const blob = await matchesGitHead(this.root, file);
+		if (blob) {
+			const authorship = require('./authorship');
+			const approval = await isBlobAcceptedFromGit(this.root, rel, blob);
+			if (approval.accepted) {
+				const changed = this.manifest[rel] !== h;
+				this.accept(file, buf);
+				if (changed && approval.signed) { authorship.recordReceivedSigned(this.root, rel, buf); }
+				return 'accepted';
+			}
+			saveQuarantined(this.context, this.root, rel, buf);
+			if (this.manifest[rel] !== undefined && fs.existsSync(this.snapPath(rel))) {
+				const snap = fs.readFileSync(this.snapPath(rel));
+				this.selfWrites.set(file, sha(stripBom(snap)));
+				fs.writeFileSync(file, snap);
+				if (!silent) { await warnQuarantine([rel]); }
+				return 'quarantined';
+			}
+			this.forget(file);
+			try {
+				await vscode.workspace.fs.delete(vscode.Uri.file(file), { useTrash: true });
+			} catch {
+				try { fs.unlinkSync(file); } catch { /* sem permissão */ }
+			}
+			if (!silent) { await warnQuarantine([rel]); }
+			return 'quarantined';
 		}
 
 		// 4) Veio de fora
@@ -326,15 +494,18 @@ class FileGuard {
 
 	/** Revalida tudo (ex.: depois de um git pull). */
 	async rescan() {
+		require('./authorship').clearBlobCache();
 		const files = [];
 		this.walk(this.root, files);
-		const removed = [], restored = [];
+		const removed = [], restored = [], quarantined = [];
 		for (const f of files) {
 			const r = await this.verify(f, { silent: true });
 			if (r === 'removed') { removed.push(this.rel(f)); }
 			if (r === 'restored') { restored.push(this.rel(f)); }
+			if (r === 'quarantined') { quarantined.push(this.rel(f)); }
 		}
 		this.report(removed, restored);
+		await warnQuarantine(quarantined);
 	}
 
 	dispose() {
@@ -383,4 +554,20 @@ async function rescanAll() {
 	for (const g of guards) { await g.rescan(); }
 }
 
-module.exports = { registerFileGuard, rescanAll, acceptOwnFile, trustFolder, isTrustedFolder, listTrustedFolders, FileGuard, isGuarded };
+module.exports = {
+	registerFileGuard,
+	rescanAll,
+	acceptOwnFile,
+	trustFolder,
+	trustFolderChecked,
+	isTrustedFolder,
+	listTrustedFolders,
+	stateDirFor,
+	folderKey,
+	readQuarantine,
+	loadQuarantined,
+	removeQuarantined,
+	acceptQuarantinedFile,
+	FileGuard,
+	isGuarded,
+};

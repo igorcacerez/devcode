@@ -37,6 +37,26 @@
         "icon": "$(play)"
       },
       {
+        "command": "devcode.quarantine.show",
+        "title": "Ver arquivos em quarentena",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.quarantine.release",
+        "title": "Liberar arquivos da quarentena (professor)",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.quarantine.discard",
+        "title": "Descartar arquivos da quarentena",
+        "category": "DEV CODE"
+      },
+      {
+        "command": "devcode.authorship.report",
+        "title": "Relatório de autoria do código",
+        "category": "DEV CODE"
+      },
+      {
         "command": "devcode.newProject",
         "title": "Novo Projeto…",
         "category": "DEV CODE",

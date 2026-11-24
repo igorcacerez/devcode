@@ -10,6 +10,7 @@ const vscode = require('vscode');
 const path = require('path');
 const gh = require('./githubAuth');
 const git = require('./git');
+const authorship = require('./authorship');
 
 const STATUS = { M: 'modificado', A: 'novo', D: 'apagado', R: 'renomeado', '?': 'novo', U: 'conflito' };
 
@@ -80,6 +81,10 @@ class GithubPanel {
 				const add = await git.run(repo, ['add', '-A', '--', ...files]);
 				const c = add.ok ? await git.run(repo, ['commit', '-m', m.message.trim(), '--', ...files]) : add;
 				if (!c.ok) { vscode.window.showErrorMessage(`DEV CODE: falha no commit.\n${c.err || c.out}`, { modal: true }); break; }
+				if (!(await authorship.signHeadCommit(repo))) {
+					vscode.window.showErrorMessage('DEV CODE: o commit foi criado, mas não foi possível assinar suas alterações. O envio foi cancelado.', { modal: true });
+					break;
+				}
 				vscode.window.setStatusBarMessage('$(check) DEV CODE: commit feito!', 3000);
 				if (m.push) { await git.push(repo, 'Enviando para o GitHub…'); }
 				break;

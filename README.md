@@ -191,6 +191,13 @@ O ícone do GitHub na barra lateral abre um painel com tudo o que o aluno precis
 - **Histórico:** os últimos 20 commits, com autor e data.
 - **Meus repositórios:** lista e filtro dos repositórios da conta, **Baixar** (clone, já liberado no vigia de arquivos) e **Publicar no GitHub** para criar um repositório novo com o projeto aberto.
 
+### Código vindo do GitHub: assinatura e quarentena
+Para impedir que o aluno escreva o código fora (com IA, pelo site do GitHub ou em outro editor) e traga para a IDE com um **pull** ou **clone**:
+- **Assinatura:** todo commit feito no DEV CODE (painel GitHub, botão Enviar ou aba Source Control) recebe uma assinatura `DevCode-Assinatura` calculada sobre as alterações. Copiar a assinatura para outro commit não funciona.
+- **Quarentena:** no pull ou clone, arquivos que vieram de commits sem assinatura não entram no projeto. Ficam em **Quarentena** (ícone 🛡 na barra de status): o aluno pode ver o conteúdo, somente leitura, mas precisa digitar de novo.
+- **Liberação pelo professor:** o comando **Liberar arquivos da quarentena (professor)** pede a **senha de administrador do Windows** (tela do UAC). Também dá para **confiar em um repositório**, como os exemplos do professor, e aí os pulls dele entram direto.
+- **Relatório de autoria:** o comando **Relatório de autoria do código** mostra, por arquivo, quanto foi digitado na IDE, quanto veio do GitHub assinado, quanto foi para a quarentena e quanto o professor liberou.
+
 ### Git com cliques
 - **Entrar no GitHub** pela própria IDE (código de dispositivo).
 - **☁↑ Enviar:** o aluno escreve só a mensagem; a IDE faz commit e push.

@@ -18,6 +18,7 @@ const fs = require('fs');
 const { initProjects, newProject, newPythonProject, newHtmlProject, openMainIfEmpty, venvPython } = require('./project');
 const { registerTerminalGuard } = require('./terminalGuard');
 const { registerFileGuard, rescanAll, isTrustedFolder } = require('./fileGuard');
+const authorship = require('./authorship');
 let extContextRef;
 const { registerGit } = require('./git');
 const { registerStartPage, showStartPage } = require('./startPage');
@@ -282,11 +283,17 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newPrototypeProject', () => require('./project').newPrototypeProject()));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newHtmlProject', newHtmlProject));
 	extContextRef = context;
+	authorship.registerAuthorship(context);
+	require('./quarantine').registerQuarantine(context);
 	initProjects(context);
 	registerFileGuard(context);
+	for (const folder of vscode.workspace.workspaceFolders || []) {
+		authorship.installHooks(folder.uri.fsPath, context.extensionPath)
+			.catch(err => console.warn('[DEV CODE hooks]', err));
+	}
 	registerGit(context, { rescan: rescanAll });
 	require('./apiClient').registerApiClient(context);
-	require('./githubPanel').registerGithubPanel(context, dir => require('./fileGuard').trustFolder(context, dir), rescanAll);
+	require('./githubPanel').registerGithubPanel(context, dir => require('./fileGuard').trustFolderChecked(context, dir), rescanAll);
 	registerStartPage(context);
 	registerUpdater(context);
 	registerPrototypeEditor(context);

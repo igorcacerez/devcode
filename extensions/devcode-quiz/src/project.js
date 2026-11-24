@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const isWin = process.platform === 'win32';
-const { trustFolder, listTrustedFolders } = require('./fileGuard');
+const { trustFolder, trustFolderChecked, listTrustedFolders } = require('./fileGuard');
 const { cloneProject } = require('./git');
 const { newReactProject, newExpoProject } = require('./jsProjects');
 const { emptyPrototype } = require('./prototypeEditor');
@@ -162,7 +162,7 @@ async function runProjectAction(id, root) {
 		case 'branco': return newBlankProject();
 		case 'react': return newReactProject(openProject);
 		case 'expo': return newExpoProject(openProject);
-		case 'git': return cloneProject(dir => trustFolder(extContext, dir));
+		case 'git': return cloneProject(dir => trustFolderChecked(extContext, dir));
 		case 'open': return vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(root), { forceNewWindow: !!vscode.workspace.workspaceFolders?.length });
 	}
 }
