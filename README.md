@@ -112,6 +112,10 @@ O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo*
   - **CSS personalizado:** campo para qualquer outra propriedade CSS (ex.: `clip-path`, `border-image`).
 - A **exportação PNG** é feita a partir do próprio HTML/CSS, com as fontes do Google embutidas, e fica idêntica à tela.
 - **Desfazer/refazer** (`Ctrl+Z`/`Ctrl+Y`), duplicar (`Ctrl+D`), alinhar várias camadas, zoom (`Ctrl`+roda) e mover a tela (`Espaço`+arrastar).
+- **Imagens como no Figma:** imagem pode ser preenchimento de qualquer forma (Preencher, Caber, Cortar, Lado a lado). **Cortar (crop):** clique duplo na imagem ou `Enter` — arraste a imagem, redimensione pelos cantos e ajuste a janela do recorte. Ajustes de exposição, contraste, saturação, temperatura, matiz, realces e sombras, e girar 90°.
+- **Vários preenchimentos (pilha, igual ao Figma):** cor sólida, degradê linear/radial/cônico e imagem, cada um com opacidade, mesclagem e olho para esconder. Botões rápidos **+ Sobreposição (overlay)** e **+ Degradê por cima** sobre fotos.
+- **Variáveis (como o `:root` do CSS):** botão **◆ Variáveis** cria cores e números (ex.: `cor/primaria`). Clique no ◆ ao lado de um campo para vincular; mudou a variável, muda em todos os elementos. **Ver como CSS** mostra o `:root { --cor-primaria: … }` equivalente.
+- **Grades de layout:** nos frames, adicione grades de colunas, linhas ou quadriculado (modelos: 12 colunas, 4 colunas mobile, grade 8px). Mostrar/esconder com **▦ Grades** ou `Ctrl+Shift+4`; os elementos encaixam nas colunas ao mover (segure `Alt` para não encaixar). As grades não saem no PNG.
 - **Exportar PNG** de cada frame para a pasta `exportacoes/`.
 - Arquivos `.devproto` também são protegidos: um protótipo colado de fora é excluído.
 

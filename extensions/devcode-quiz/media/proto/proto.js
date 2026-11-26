@@ -15,6 +15,8 @@
 	let images = {};
 	let editingTextId = null;
 	let renamingId = null;
+	let cropMode = null;
+	let gridsVisible = vscode.getState?.()?.gridsVisible !== false;
 	let fitted = false;
 	let spaceDown = false;
 	let commitTimer = null;
@@ -40,6 +42,79 @@
 	const uid = () => Math.random().toString(36).slice(2, 9);
 	const round = v => Math.round(v);
 	const clone = o => JSON.parse(JSON.stringify(o));
+	const emptyVariables = () => ({ colors: [], numbers: [] });
+	function variableList(kind) { return model?.variables?.[kind === 'color' ? 'colors' : 'numbers'] || []; }
+	function resolveColor(value, fallback = '#000000') {
+		if (value && typeof value === 'object' && value.var) { return variableList('color').find(v => v.id === value.var)?.value ?? fallback; }
+		return value ?? fallback;
+	}
+	function resolveNum(value, fallback = 0) {
+		if (value && typeof value === 'object' && value.var) { value = variableList('number').find(v => v.id === value.var)?.value; }
+		const n = Number(value);
+		return Number.isFinite(n) ? n : fallback;
+	}
+	function legacyFills(n) {
+		if (n.type === 'image') {
+			const fills = [{ id: `legacy-image-${n.id}`, type: 'image', opacity: 1, visible: true, blend: '', image: { src: n.src, mode: n.fit === 'fill' ? 'stretch' : (n.fit || 'cover'), position: n.imagePosition || 'center', transform: n.imageTransform || null, adjustments: n.imageAdjustments || {} } }];
+			const backgroundType = n.fillType || 'solid';
+			if (backgroundType !== 'none') { fills.push({ id: `legacy-fill-${n.id}`, type: backgroundType, color: n.fill ?? 'transparent', opacity: 1, visible: true, blend: '', gradient: n.gradient ? clone(n.gradient) : undefined }); }
+			return fills;
+		}
+		const type = n.fillType || 'solid';
+		if (type === 'none') { return []; }
+		return [{ id: `legacy-fill-${n.id}`, type, color: n.fill ?? (n.type === 'frame' ? '#FFFFFF' : 'transparent'), opacity: 1, visible: true, blend: '', gradient: n.gradient ? clone(n.gradient) : undefined }];
+	}
+	function getFills(n) { return Array.isArray(n.fills) ? n.fills : legacyFills(n); }
+	function ensureFills(n) { if (!Array.isArray(n.fills)) { n.fills = legacyFills(n); } return n.fills; }
+	function fillAt(n, key, index) { const fills = ensureFills(n); return fills.find(f => f.id === key) || fills[index]; }
+	function gradientCss(fill) {
+		const g = fill.gradient || {};
+		const stops = (g.stops || [{ color: '#D10A0A', pos: 0 }, { color: '#111111', pos: 100 }]).map(s => {
+			const raw = resolveColor(s.color), c = DevStyle.parseColor(raw), opacity = resolveNum(s.opacity ?? 1, 1);
+			const color = c.raw ? (opacity >= 1 ? raw : `color-mix(in srgb, ${raw} ${opacity * 100}%, transparent)`) : DevStyle.toColor(c.hex, c.a * opacity);
+			return `${color} ${resolveNum(s.pos, 0)}%`;
+		}).join(', ');
+		if (fill.type === 'radial') { return `radial-gradient(${g.shape || 'circle'} at center, ${stops})`; }
+		if (fill.type === 'conic') { return `conic-gradient(from ${resolveNum(g.angle, 0)}deg, ${stops})`; }
+		return `linear-gradient(${resolveNum(g.angle, 180)}deg, ${stops})`;
+	}
+	function fillImageTransform(n, fill) { return fill.image?.transform || (n.type === 'image' ? n.imageTransform : null); }
+	function appendFillLayers(el, n) {
+		const fills = getFills(n);
+		for (let i = fills.length - 1; i >= 0; i--) {
+			const fill = fills[i];
+			if (fill.visible === false || fill.type === 'none') { continue; }
+			const layer = h('div', { class: 'fill-layer', 'data-fill-id': fill.id || `fill-${i}` });
+			Object.assign(layer.style, { position: 'absolute', inset: '0', overflow: 'hidden', borderRadius: 'inherit', pointerEvents: 'none', opacity: String(resolveNum(fill.opacity ?? 1, 1)), mixBlendMode: fill.blend || 'normal' });
+			if (fill.type === 'image') {
+				const image = fill.image || {};
+				const src = image.src || (n.type === 'image' ? n.src : '');
+				const uri = images[src];
+				if (!uri) { layer.style.backgroundColor = '#ddd'; }
+				else if (image.mode === 'tile') {
+					const scale = Math.max(1, resolveNum(image.scale, 100));
+					layer.style.backgroundImage = `url("${uri}")`;
+					layer.style.backgroundRepeat = 'repeat';
+					layer.style.backgroundSize = `${scale}% auto`;
+					layer.style.filter = DevStyle.imageFilterCss(image.adjustments || {});
+				} else if (uri) {
+					const img = h('img', { src: uri, draggable: 'false', alt: '' });
+					img.style.position = 'absolute'; img.style.maxWidth = 'none'; img.style.maxHeight = 'none'; img.style.pointerEvents = 'none';
+					img.style.filter = DevStyle.imageFilterCss(image.adjustments || {});
+					const transform = fillImageTransform(n, fill);
+					if (image.mode === 'crop' && transform) {
+						Object.assign(img.style, { left: `${resolveNum(transform.x)}px`, top: `${resolveNum(transform.y)}px`, width: `${Math.max(1, resolveNum(transform.w, n.w))}px`, height: `${Math.max(1, resolveNum(transform.h, n.h))}px`, objectFit: 'fill' });
+					} else {
+					Object.assign(img.style, { left: '0', top: '0', width: '100%', height: '100%', objectFit: image.mode === 'contain' ? 'contain' : image.mode === 'stretch' ? 'fill' : ['none', 'scale-down'].includes(image.mode) ? image.mode : 'cover', objectPosition: image.position || 'center' });
+					}
+					if (image.rotation) { img.style.transform = `rotate(${resolveNum(image.rotation)}deg)`; img.style.transformOrigin = 'center'; }
+					layer.append(img);
+				}
+			} else if (fill.type === 'linear' || fill.type === 'radial' || fill.type === 'conic') { layer.style.background = gradientCss(fill); }
+			else { layer.style.backgroundColor = resolveColor(fill.color, 'transparent'); }
+			el.append(layer);
+		}
+	}
 
 	function walk(fn, nodes = model.nodes, parent = null) {
 		for (const n of nodes) {
@@ -148,7 +223,12 @@
 	});
 	function requestImages() {
 		const srcs = [];
-		walk(n => { if (n.type === 'image' && n.src && !images[n.src]) { srcs.push(n.src); } });
+		walk(n => {
+			for (const fill of getFills(n)) {
+				const src = fill.image?.src || (n.type === 'image' && fill.type === 'image' ? n.src : '');
+				if (fill.type === 'image' && src && !images[src]) { srcs.push(src); }
+			}
+		});
 		if (srcs.length) { vscode.postMessage({ type: 'resolveImages', srcs }); }
 	}
 
@@ -173,6 +253,8 @@
 			h('div', { class: 'sep' }),
 			h('button', { class: 'tool', onclick: groupSelected, title: 'Agrupar as camadas selecionadas (Ctrl+G)' }, '▣ Agrupar'),
 			h('button', { class: 'tool', onclick: ungroupSelected, title: 'Desagrupar (Ctrl+Shift+G)' }, '⊟ Desagrupar'),
+			h('button', { class: `tool ${gridsVisible ? 'active' : ''}`, 'data-grid-toggle': '1', onclick: toggleGrids, title: 'Mostrar ou ocultar grades (Ctrl+Shift+4)' }, '\u25A6 Grades'),
+			h('button', { class: 'tool', onclick: openVariables, title: 'Variáveis de cor e número' }, '\u25C6 Variáveis'),
 			h('div', { class: 'spacer' }),
 			h('button', { class: 'tool', onclick: () => zoomBy(1 / 1.2), title: 'Diminuir zoom (-)' }, '−'),
 			zoomEl = h('div', { class: 'zoom' }),
@@ -208,6 +290,7 @@
 		hintEl.textContent = hints[t] || '';
 		hintEl.style.display = hints[t] ? '' : 'none';
 	}
+	function toggleGrids() { gridsVisible = !gridsVisible; vscode.setState?.({ gridsVisible }); document.querySelector('[data-grid-toggle]')?.classList.toggle('active', gridsVisible); render(); }
 
 	// ------------------------------------------------------------------ desenho do documento
 	function nodeStyle(n, offX, offY) {
@@ -219,7 +302,8 @@
 		// posicionamento inline: a exportação PNG não leva o proto.css junto
 		el.style.position = 'absolute';
 		Object.assign(el.style, nodeStyle(n, offX, offY));
-		DevStyle.apply(el, n);
+		DevStyle.apply(el, n, { resolveColor, resolveNum, renderFillStack: true });
+		appendFillLayers(el, n);
 		if (n.visible === false) { el.style.display = 'none'; }
 		switch (n.type) {
 			case 'frame':
@@ -234,22 +318,16 @@
 				const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
 				ln.setAttribute('x1', n.x - b.x); ln.setAttribute('y1', n.y - b.y);
 				ln.setAttribute('x2', n.x + n.w - b.x); ln.setAttribute('y2', n.y + n.h - b.y);
-				ln.setAttribute('stroke', n.stroke); ln.setAttribute('stroke-width', n.strokeWidth || 2); ln.setAttribute('stroke-linecap', 'round');
+				ln.setAttribute('stroke', resolveColor(n.stroke, '#111111')); ln.setAttribute('stroke-width', resolveNum(n.strokeWidth, 2)); ln.setAttribute('stroke-linecap', 'round');
 				if (n.dash) { ln.setAttribute('stroke-dasharray', n.dash); }
 				svg.append(ln); el.append(svg);
 				break;
 			}
 			case 'text':
-				el.append(h('span', { class: 'text-content', style: { display: 'block', overflow: n.ellipsis ? 'hidden' : '', textOverflow: n.ellipsis ? 'ellipsis' : '', whiteSpace: 'inherit' } }, n.text));
+				el.append(h('span', { class: 'text-content', style: { display: 'block', position: 'relative', zIndex: '1', overflow: n.ellipsis ? 'hidden' : '', textOverflow: n.ellipsis ? 'ellipsis' : '', whiteSpace: 'inherit' } }, n.text));
 				if (editingTextId === n.id) { el.firstChild.contentEditable = 'true'; }
 				break;
 			case 'image':
-				if (images[n.src]) {
-					const img = h('img', { src: images[n.src], draggable: 'false' });
-					Object.assign(img.style, { width: '100%', height: '100%', display: 'block', pointerEvents: 'none' });
-					img.style.objectFit = n.fit || 'cover'; img.style.objectPosition = n.imagePosition || 'center';
-					el.append(img);
-				} else { el.style.background = el.style.background || '#ddd'; }
 				break;
 		}
 		return el;
@@ -268,6 +346,7 @@
 			}
 			world.append(renderNode(n, 0, 0));
 		}
+		if (gridsVisible) { for (const frame of model.nodes.filter(n => n.type === 'frame' && n.visible !== false)) { const grid = renderLayoutGrid(frame); if (grid) { world.append(grid); } } }
 		zoomEl.textContent = `${Math.round(view.zoom * 100)}%`;
 		renderOverlay();
 		renderLayers();
@@ -276,6 +355,111 @@
 			const el = world.querySelector(`[data-id="${editingTextId}"] .text-content`);
 			if (el && document.activeElement !== el) { el.focus(); placeCaretAtEnd(el); }
 		}
+	}
+	function gridRects(frame, grid) {
+		const vertical = grid.type !== 'rows';
+		const extent = vertical ? frame.w : frame.h;
+		const margin = Math.max(0, resolveNum(grid.margin, 0)), gutter = Math.max(0, resolveNum(grid.gutter, 0));
+		const count = Math.max(1, Math.round(resolveNum(grid.count, 12)));
+		const inner = Math.max(1, extent - margin * 2);
+		let size = Math.max(1, resolveNum(grid.size, 8));
+		if (grid.type !== 'grid') {
+			const fixed = grid.align !== 'stretch';
+			size = fixed ? Math.max(1, resolveNum(grid.width, vertical ? 80 : 8)) : Math.max(1, (inner - gutter * (count - 1)) / count);
+		}
+		const total = count * size + gutter * (count - 1);
+		let start = margin + resolveNum(grid.offset, 0);
+		if (grid.type === 'columns' && grid.align === 'center' || grid.type === 'rows' && grid.align === 'center') { start = (extent - total) / 2 + resolveNum(grid.offset, 0); }
+		if (grid.type === 'columns' && grid.align === 'right' || grid.type === 'rows' && grid.align === 'bottom') { start = extent - margin - total + resolveNum(grid.offset, 0); }
+		if (grid.type === 'grid') { start = resolveNum(grid.offset, 0); }
+		return { vertical, extent, count, size, gutter, start };
+	}
+	function renderLayoutGrid(frame) {
+		if (!gridsVisible || !frame.layoutGrids?.some(g => g.visible !== false)) { return null; }
+		const overlayGrid = h('div', { class: 'layout-grid-overlay', 'data-frame-grid': frame.id });
+		Object.assign(overlayGrid.style, { left: `${frame.x}px`, top: `${frame.y}px`, width: `${frame.w}px`, height: `${frame.h}px` });
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', frame.w); svg.setAttribute('height', frame.h); svg.setAttribute('viewBox', `0 0 ${frame.w} ${frame.h}`);
+		for (const grid of frame.layoutGrids) {
+			if (grid.visible === false) { continue; }
+			const color = grid.color || '#FF000019';
+			if (grid.type === 'grid' || grid.preset === 'rows8') {
+				const size = Math.max(1, resolveNum(grid.size, 8)), offset = resolveNum(grid.offset, 0);
+				for (let x = ((offset % size) + size) % size; grid.type === 'grid' && x <= frame.w; x += size) {
+					const line = document.createElementNS('http://www.w3.org/2000/svg', 'line'); line.setAttribute('x1', x); line.setAttribute('x2', x); line.setAttribute('y1', '0'); line.setAttribute('y2', frame.h); line.setAttribute('stroke', color); svg.append(line);
+				}
+				for (let y = ((offset % size) + size) % size; y <= frame.h; y += size) {
+					const line = document.createElementNS('http://www.w3.org/2000/svg', 'line'); line.setAttribute('y1', y); line.setAttribute('y2', y); line.setAttribute('x1', '0'); line.setAttribute('x2', frame.w); line.setAttribute('stroke', color); svg.append(line);
+				}
+				continue;
+			}
+			const geom = gridRects(frame, grid);
+			for (let i = 0; i < geom.count; i++) {
+				const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+				const pos = geom.start + i * (geom.size + geom.gutter);
+				if (geom.vertical) { rect.setAttribute('x', pos); rect.setAttribute('y', '0'); rect.setAttribute('width', geom.size); rect.setAttribute('height', frame.h); }
+				else { rect.setAttribute('x', '0'); rect.setAttribute('y', pos); rect.setAttribute('width', frame.w); rect.setAttribute('height', geom.size); }
+				rect.setAttribute('fill', color); svg.append(rect);
+			}
+		}
+		overlayGrid.append(svg); return overlayGrid;
+	}
+	function gridSnapLines(frame, axis) {
+		const lines = [];
+		for (const grid of frame.layoutGrids || []) {
+			if (grid.visible === false) { continue; }
+			if (grid.type === 'grid' || grid.preset === 'rows8') {
+				const size = Math.max(1, resolveNum(grid.size, 8)), offset = resolveNum(grid.offset, 0), extent = axis === 'x' ? frame.w : frame.h;
+				if (grid.type === 'grid' || axis === 'y') { for (let p = ((offset % size) + size) % size; p <= extent; p += size) { lines.push((axis === 'x' ? frame.x : frame.y) + p); } }
+			} else {
+				const geom = gridRects(frame, grid);
+				if ((axis === 'x') !== geom.vertical) { continue; }
+				for (let i = 0; i < geom.count; i++) {
+					const p = (axis === 'x' ? frame.x : frame.y) + geom.start + i * (geom.size + geom.gutter);
+					lines.push(p, p + geom.size);
+				}
+			}
+		}
+		return lines;
+	}
+	function snapAxis(start, size, delta, lines, threshold) {
+		let best = delta, distance = threshold;
+		for (const line of lines) {
+			for (const edge of [start + delta, start + delta + size]) {
+				const d = line - edge;
+				if (Math.abs(d) < distance) { distance = Math.abs(d); best = delta + d; }
+			}
+		}
+		return best;
+	}
+	function snappedDelta(n, dx, dy, alt) {
+		if (alt || !gridsVisible) { return { x: dx, y: dy }; }
+		const path = pathTo(n.id), frame = path.slice(0, -1).reverse().find(a => a.type === 'frame') || frameAt(n.x + n.w / 2, n.y + n.h / 2);
+		if (!frame?.layoutGrids?.some(g => g.visible !== false)) { return { x: dx, y: dy }; }
+		const threshold = 6 / view.zoom;
+		return { x: snapAxis(n.x, n.w, dx, gridSnapLines(frame, 'x'), threshold), y: snapAxis(n.y, n.h, dy, gridSnapLines(frame, 'y'), threshold) };
+	}
+	function snapBox(n, box, alt) {
+		if (alt || !gridsVisible) { return box; }
+		const path = pathTo(n.id), frame = path.slice(0, -1).reverse().find(a => a.type === 'frame') || frameAt(box.x + box.w / 2, box.y + box.h / 2);
+		if (!frame?.layoutGrids?.some(g => g.visible !== false)) { return box; }
+		const threshold = 6 / view.zoom;
+		for (const axis of ['x', 'y']) {
+			const start = axis === 'x' ? box.x : box.y, size = axis === 'x' ? box.w : box.h;
+			const lines = gridSnapLines(frame, axis); let best = null, distance = threshold;
+			for (const line of lines) {
+				const ds = Math.abs(line - start), de = Math.abs(line - (start + size));
+				if (ds < distance) { distance = ds; best = { edge: 'start', line }; }
+				if (de < distance) { distance = de; best = { edge: 'end', line }; }
+			}
+			if (best) {
+				if (axis === 'x' && best.edge === 'start') { const end = box.x + box.w; box.x = best.line; box.w = Math.max(1, end - box.x); }
+				else if (axis === 'x') { box.w = Math.max(1, best.line - box.x); }
+				else if (best.edge === 'start') { const end = box.y + box.h; box.y = best.line; box.h = Math.max(1, end - box.y); }
+				else { box.h = Math.max(1, best.line - box.y); }
+			}
+		}
+		return box;
 	}
 	function placeCaretAtEnd(el) {
 		const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
@@ -288,6 +472,7 @@
 
 	function renderOverlay() {
 		overlay.innerHTML = '';
+		if (cropMode) { renderCropOverlay(); return; }
 		const nodes = selected();
 		if (!nodes.length || editingTextId) { return; }
 		// contorno tracejado do grupo em que estamos "dentro"
@@ -486,6 +671,321 @@
 		render();
 	}
 	function section(title, ...rows) { return h('div', { class: 'section' }, h('h3', {}, title), ...rows); }
+	let activeModal = null;
+	function variableCssName(name) { return String(name || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'variavel'; }
+	function variablesCss() {
+		const vars = { colors: model?.variables?.colors || [], numbers: model?.variables?.numbers || [] };
+		const lines = [...vars.colors, ...vars.numbers].map(v => `  --${variableCssName(v.name)}: ${v.value};`);
+		return `:root {\n${lines.join('\n')}\n}`;
+	}
+	function modal(title, width = 440) {
+		activeModal?.remove();
+		const back = h('div', { class: 'modal-backdrop' });
+		const box = h('div', { class: 'modal', style: { width: `${width}px` } }, h('div', { class: 'modal-title' }, title));
+		box.addEventListener('keydown', e => e.stopPropagation());
+		back.append(box); back.addEventListener('pointerdown', e => { if (e.target === back) { back.remove(); if (activeModal === back) { activeModal = null; } } });
+		document.body.append(back); activeModal = back;
+		return { back, box };
+	}
+	function saveVariableChange() { commit(); render(); }
+	function replaceVariableBindings(id, value, obj = model) {
+		if (!obj || typeof obj !== 'object') { return; }
+		for (const key of Object.keys(obj)) {
+			const current = obj[key];
+			if (current && typeof current === 'object' && current.var === id) { obj[key] = clone(value); }
+			else if (current && typeof current === 'object') { replaceVariableBindings(id, value, current); }
+		}
+	}
+	function confirmDeleteVariable(v, kind) {
+		const { back, box } = modal('Excluir variável?', 360);
+		box.append(h('p', {}, `“${v.name}” está vinculada a campos. Ao excluir, os campos receberão o valor atual (${v.value}).`),
+			h('div', { class: 'modal-actions' },
+				h('button', { class: 'btn', onclick: () => { back.remove(); activeModal = null; openVariables(); } }, 'Cancelar'),
+				h('button', { class: 'btn primary', onclick: () => {
+					replaceVariableBindings(v.id, v.value);
+					model.variables[kind] = model.variables[kind].filter(x => x.id !== v.id);
+					back.remove(); activeModal = null; saveVariableChange(); openVariables();
+				} }, 'Excluir')));
+	}
+	function openCssModal() {
+		const { box } = modal('Ver como CSS', 520);
+		const css = h('textarea', { class: 'css-preview', readonly: true }, variablesCss());
+		box.append(css, h('div', { class: 'modal-actions' },
+			h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(css.value); toast('CSS copiado.'); } catch { toast('Não foi possível copiar o CSS neste contexto.'); } } }, 'Copiar CSS'),
+			h('button', { class: 'btn primary', onclick: () => { activeModal?.remove(); activeModal = null; openVariables(); } }, 'Voltar')));
+	}
+	function openVariables() {
+		const vars = { colors: model.variables?.colors || [], numbers: model.variables?.numbers || [] };
+		const { box } = modal('Variáveis', 520);
+		const list = h('div', { class: 'variable-list' });
+		const addRow = (items, kind, title) => {
+			list.append(h('div', { class: 'variable-group-title' }, title));
+			for (const v of items) {
+				const name = h('input', { value: v.name, title: `CSS: --${variableCssName(v.name)}` });
+				name.addEventListener('change', () => { v.name = name.value.trim() || v.name; name.title = `CSS: --${variableCssName(v.name)}`; hint.textContent = `--${variableCssName(v.name)}`; saveVariableChange(); });
+				name.addEventListener('keydown', e => e.stopPropagation());
+				const value = h('input', { type: kind === 'color' ? 'color' : 'number', value: kind === 'color' ? String(v.value || '#000000').slice(0, 7) : v.value, step: kind === 'number' ? 0.1 : undefined });
+				value.addEventListener('input', () => { v.value = kind === 'number' ? Number(value.value) : value.value; saveVariableChange(); });
+				const hint = h('span', { class: 'variable-css-hint' }, `--${variableCssName(v.name)}`);
+				list.append(h('div', { class: 'variable-row' }, name, value, hint, h('button', { class: 'btn mini', title: 'Excluir', onclick: () => confirmDeleteVariable(v, kind === 'color' ? 'colors' : 'numbers') }, '×')));
+			}
+		};
+		addRow(vars.colors, 'color', 'Cores'); addRow(vars.numbers, 'number', 'Números');
+		if (!vars.colors.length && !vars.numbers.length) { list.append(h('div', { class: 'empty' }, 'Crie variáveis para reutilizar cores e medidas no protótipo.')); }
+		box.append(list, h('div', { class: 'modal-actions' },
+			h('button', { class: 'btn', onclick: () => { model.variables = { colors: model.variables?.colors || [], numbers: model.variables?.numbers || [] }; model.variables.colors.push({ id: uid(), name: `cor/${model.variables.colors.length + 1}`, value: '#D10A0A' }); saveVariableChange(); openVariables(); } }, '+ Cor'),
+			h('button', { class: 'btn', onclick: () => { model.variables = { colors: model.variables?.colors || [], numbers: model.variables?.numbers || [] }; model.variables.numbers.push({ id: uid(), name: `espacamento/${model.variables.numbers.length + 1}`, value: 8 }); saveVariableChange(); openVariables(); } }, '+ Número'),
+			h('button', { class: 'btn', onclick: openCssModal }, 'Ver como CSS'),
+			h('button', { class: 'btn primary', onclick: () => { activeModal?.remove(); activeModal = null; } }, 'Fechar')));
+	}
+	function bindField(obj, key, kind, anchor) {
+		const current = obj[key];
+		if (current && typeof current === 'object' && current.var) {
+			obj[key] = kind === 'color' ? resolveColor(current) : resolveNum(current);
+			commit(true); render(); return;
+		}
+		const values = variableList(kind);
+		if (!values.length) { openVariables(); toast('Crie uma variável deste tipo e vincule o campo.'); return; }
+		const pop = h('div', { class: 'variable-pop' });
+		for (const v of values) {
+			pop.append(h('button', { class: 'variable-option', onclick: e => { e.stopPropagation(); obj[key] = { var: v.id }; pop.remove(); commit(true); render(); } },
+				kind === 'color' ? h('span', { class: 'variable-swatch', style: { background: resolveColor({ var: v.id }) } }) : null,
+				v.name, h('span', { class: 'variable-css-hint' }, `--${variableCssName(v.name)}`)));
+		}
+		pop.append(h('button', { class: 'variable-option create', onclick: e => { e.stopPropagation(); pop.remove(); openVariables(); } }, '+ Gerenciar variáveis'));
+		document.body.append(pop);
+		const r = anchor?.getBoundingClientRect();
+		Object.assign(pop.style, { left: `${Math.max(8, Math.min(window.innerWidth - 250, r?.left || 8))}px`, top: `${Math.min(window.innerHeight - 260, (r?.bottom || 32) + 4)}px` });
+		setTimeout(() => document.addEventListener('pointerdown', function close(e) { if (!pop.contains(e.target) && e.target !== anchor) { pop.remove(); document.removeEventListener('pointerdown', close); } }), 0);
+	}
+	function variableContext(n) {
+		return {
+			variables: model.variables || emptyVariables(), resolveColor, resolveNum, bindField,
+			canBind: (obj, key, kind) => kind === 'color' || (kind === 'number' && (['radius', 'strokeWidth', 'fontSize', 'gap'].includes(String(key)) || (Array.isArray(obj) && (obj === n.padding || obj === n.radii || obj === n.borderSides)))),
+		};
+	}
+	function updateFill(n, key, index, change) {
+		const fill = fillAt(n, key, index);
+		if (!fill) { return; }
+		fill.id = fill.id || uid(); change(fill); commit(); render();
+	}
+	function addFill(n, type = 'solid', index = 0) {
+		const fill = { id: uid(), type, color: '#D10A0A', opacity: 1, visible: true, blend: '' };
+		if (type === 'linear' || type === 'radial' || type === 'conic') { fill.gradient = { angle: type === 'conic' ? 0 : 180, shape: 'circle', stops: [{ color: '#D10A0A', pos: 0, opacity: 1 }, { color: '#111111', pos: 100, opacity: 1 }] }; }
+		if (type === 'image') { fill.image = { src: '', mode: 'cover', scale: 100, transform: null, adjustments: {} }; }
+		const fills = ensureFills(n); fills.splice(Math.max(0, Math.min(index, fills.length)), 0, fill); commit(true); render();
+		return fill;
+	}
+	function addImageOverlay(n, key, index, gradient) {
+		const fills = ensureFills(n);
+		const above = fills.findIndex(f => f.id === key);
+		const fill = gradient
+			? { id: uid(), type: 'linear', opacity: 1, visible: true, blend: '', gradient: { angle: 180, stops: [{ color: '#000000', pos: 0, opacity: 0 }, { color: '#000000', pos: 100, opacity: 0.7 }] } }
+			: { id: uid(), type: 'solid', color: '#000000', opacity: 0.4, visible: true, blend: '' };
+		fills.splice(above >= 0 ? above : index, 0, fill); commit(true); render();
+	}
+	function imagePickerForFill(n, fill, index) {
+		const actual = fillAt(n, fill.id || `fill-${index}`, index);
+		if (!actual) { return; }
+		actual.id = actual.id || uid(); actual.type = 'image'; actual.image = actual.image || { src: '', mode: 'cover', scale: 100, transform: null, adjustments: {} };
+		vscode.postMessage({ type: 'pickImage', replace: n.id, fillId: actual.id });
+	}
+	function customNum(label, obj, key, options = {}) {
+		const bound = !!obj[key]?.var;
+		const value = resolveNum(obj[key], options.def ?? 0);
+		const input = h('input', { type: 'number', value, step: options.step || 1, min: options.min, max: options.max, disabled: bound });
+		input.addEventListener('input', () => { const v = Number(input.value); if (!Number.isFinite(v)) { return; } options.set ? options.set(v) : setProp(obj, key, v); });
+		input.addEventListener('keydown', e => e.stopPropagation());
+		return h('div', { class: 'field', title: options.title || '' }, h('label', {}, label), input, options.unit ? h('span', { class: 'unit' }, options.unit) : null, options.bind ? bindingControl(obj, key, 'number', options.bind) : null);
+	}
+	function customColor(label, obj, key, fallback = '#000000', onSet, onBind) {
+		const bound = !!obj[key]?.var;
+		const value = resolveColor(obj[key], fallback);
+		const color = h('input', { type: 'color', value: String(value).startsWith('#') ? String(value).slice(0, 7) : fallback, disabled: bound });
+		const text = h('input', { class: 'color-text', value: bound ? 'variável' : String(value), disabled: bound, spellcheck: 'false' });
+		const save = value => onSet ? onSet(value) : setProp(obj, key, value);
+		color.addEventListener('input', () => { text.value = color.value; save(color.value); });
+		text.addEventListener('change', () => save(text.value.trim() || fallback));
+		text.addEventListener('keydown', e => e.stopPropagation());
+		return h('div', { class: 'field' }, h('label', {}, label), color, text, bindingControl(obj, key, 'color', onBind));
+	}
+	function fillSelect(label, obj, key, options, apply) {
+		const sel = h('select', {}, ...options.map(([value, title]) => h('option', { value, selected: String(obj[key] ?? '') === String(value) }, title)));
+		sel.addEventListener('change', () => { const value = sel.value; sel.blur(); apply(value); });
+		return h('div', { class: 'field' }, h('label', {}, label), sel);
+	}
+	function bindingControl(obj, key, kind, onBind) {
+		const bound = obj[key] && typeof obj[key] === 'object' && obj[key].var;
+		const item = bound ? variableList(kind).find(v => v.id === obj[key].var) : null;
+		return h('span', { class: 'binding-tools' },
+			bound ? h('span', { class: 'binding-chip', title: item?.name || '' }, `◆ ${item?.name || 'variável'}`) : null,
+			h('button', { class: 'bind-btn', title: bound ? 'Desvincular variável' : 'Vincular a uma variável', onclick: e => { e.stopPropagation(); onBind ? onBind(e.currentTarget) : bindField(obj, key, kind, e.currentTarget); } }, bound ? '×' : '◆'));
+	}
+	function cropTarget() {
+		const n = cropMode && find(cropMode.nodeId)?.node;
+		const fill = n && getFills(n).find(f => f.id === cropMode.fillId);
+		return n && fill ? { node: n, fill } : null;
+	}
+	function exitCrop() { if (!cropMode) { return; } cropMode = null; render(); }
+	async function imageDimensions(url) {
+		return new Promise(resolve => {
+			const img = new Image(); const timer = setTimeout(() => resolve({ w: 200, h: 150 }), 3000);
+			img.onload = () => { clearTimeout(timer); resolve({ w: img.naturalWidth || 200, h: img.naturalHeight || 150 }); };
+			img.onerror = () => { clearTimeout(timer); resolve({ w: 200, h: 150 }); }; img.src = url;
+		});
+	}
+	async function enterCrop(n, fill, index) {
+		const actual = fillAt(n, fill.id || `fill-${index}`, index);
+		if (!actual) { return; }
+		actual.id = actual.id || uid(); actual.type = 'image'; actual.image = actual.image || { src: '', mode: 'cover', scale: 100, adjustments: {} };
+		if (!actual.image.src) { imagePickerForFill(n, actual, index); return; }
+		let transform = fillImageTransform(n, actual);
+		if (!transform || !transform.w || !transform.h) {
+			const src = images[actual.image.src];
+			const natural = await imageDimensions(src);
+			const ratio = natural.w / natural.h, boxRatio = n.w / Math.max(1, n.h);
+			const w = ratio > boxRatio ? n.h * ratio : n.w;
+			const hgt = ratio > boxRatio ? n.h : n.w / ratio;
+			transform = { x: round((n.w - w) / 2), y: round((n.h - hgt) / 2), w: round(w), h: round(hgt) };
+			actual.image.transform = transform;
+			if (n.type === 'image') { n.imageTransform = clone(transform); }
+		}
+		actual.image.mode = 'crop';
+		cropMode = { nodeId: n.id, fillId: actual.id }; selection = new Set([n.id]); editingTextId = null;
+		commit(true); render();
+	}
+	function renderCropOverlay() {
+		const target = cropTarget(); if (!target || !stage) { cropMode = null; return; }
+		const { node: n, fill } = target;
+		const transform = fillImageTransform(n, fill) || { x: 0, y: 0, w: n.w, h: n.h };
+		const src = images[fill.image?.src || ''];
+		if (!src) { return; }
+		const p = toScreen(n.x, n.y), ip = toScreen(n.x + transform.x, n.y + transform.y);
+		const W = n.w * view.zoom, H = n.h * view.zoom, iW = transform.w * view.zoom, iH = transform.h * view.zoom;
+		const ui = h('div', { class: 'crop-ui', 'data-crop-ui': '1' });
+		const img = h('img', { class: 'crop-full-image', src, draggable: 'false', alt: '' });
+		Object.assign(img.style, { left: `${ip.x}px`, top: `${ip.y}px`, width: `${iW}px`, height: `${iH}px`, filter: DevStyle.imageFilterCss(fill.image.adjustments || {}) });
+		if (fill.image.rotation) { img.style.transform = `rotate(${resolveNum(fill.image.rotation)}deg)`; img.style.transformOrigin = 'center'; }
+		ui.append(img);
+		const imageRect = h('div', { class: 'crop-image-rect', style: { left: `${ip.x}px`, top: `${ip.y}px`, width: `${iW}px`, height: `${iH}px` } });
+		imageRect.append(h('div', { class: 'crop-image-hit', 'data-crop-move': '1', title: 'Arraste para reposicionar a imagem' }));
+		for (const [handle, x, y] of [['nw', 0, 0], ['ne', iW, 0], ['se', iW, iH], ['sw', 0, iH]]) {
+			imageRect.append(h('div', { class: 'crop-handle image-handle', 'data-crop-image-handle': handle, style: { left: `${x}px`, top: `${y}px` } }));
+		}
+		ui.append(imageRect);
+		const windowBox = h('div', { class: 'crop-window', style: { left: `${p.x}px`, top: `${p.y}px`, width: `${W}px`, height: `${H}px` } });
+		if (n.type === 'ellipse') { windowBox.style.borderRadius = '50%'; }
+		else { windowBox.style.borderRadius = `${resolveNum(n.radius) * view.zoom}px`; }
+		for (const [handle, x, y] of [['nw', 0, 0], ['n', W / 2, 0], ['ne', W, 0], ['e', W, H / 2], ['se', W, H], ['s', W / 2, H], ['sw', 0, H], ['w', 0, H / 2]]) {
+			windowBox.append(h('div', { class: 'crop-handle window-handle', 'data-crop-window-handle': handle, style: { left: `${x}px`, top: `${y}px` } }));
+		}
+		ui.append(windowBox, h('div', { class: 'crop-label', style: { left: `${p.x}px`, top: `${p.y + H + 10}px` } }, 'Arraste a imagem ou ajuste o recorte · Enter/Esc para concluir'));
+		overlay.append(ui);
+	}
+	function fillStackSection(n) {
+		if (n.type === 'line' || n.type === 'group') { return null; }
+		const fills = getFills(n);
+		const rows = [];
+		for (const [index, fill] of fills.entries()) {
+			const key = fill.id || `fill-${index}`;
+			const head = h('div', { class: 'fill-head' },
+				h('strong', {}, `${fill.type === 'image' ? 'Imagem' : fill.type === 'linear' ? 'Degradê linear' : fill.type === 'radial' ? 'Degradê radial' : fill.type === 'conic' ? 'Degradê cônico' : 'Cor sólida'} ${index + 1}`),
+				h('button', { class: 'btn mini', title: fill.visible === false ? 'Mostrar preenchimento' : 'Ocultar preenchimento', onclick: () => updateFill(n, key, index, f => { f.visible = f.visible === false; }) }, fill.visible === false ? '◉' : '◌'),
+				h('button', { class: 'btn mini', title: 'Trazer para cima', disabled: index === 0, onclick: () => { const stack = ensureFills(n); const [item] = stack.splice(index, 1); stack.splice(index - 1, 0, item); commit(true); render(); } }, '↑'),
+				h('button', { class: 'btn mini', title: 'Enviar para baixo', disabled: index === fills.length - 1, onclick: () => { const stack = ensureFills(n); const [item] = stack.splice(index, 1); stack.splice(index + 1, 0, item); commit(true); render(); } }, '↓'),
+				h('button', { class: 'btn mini', title: 'Remover preenchimento', onclick: () => { const stack = ensureFills(n); stack.splice(index, 1); commit(true); render(); } }, '×'));
+			const type = h('select', {}, ...[['solid', 'Cor sólida'], ['linear', 'Degradê linear'], ['radial', 'Degradê radial'], ['conic', 'Degradê cônico'], ['image', 'Imagem']].map(([v, label]) => h('option', { value: v, selected: fill.type === v }, label)));
+			type.addEventListener('change', () => { type.blur(); updateFill(n, key, index, f => {
+				f.type = type.value;
+				if (['linear', 'radial', 'conic'].includes(f.type)) { f.gradient = f.gradient || { angle: 180, shape: 'circle', stops: [{ color: '#FFFFFF', pos: 0, opacity: 1 }, { color: '#000000', pos: 100, opacity: 1 }] }; }
+				if (f.type === 'image') { f.image = f.image || { src: '', mode: 'cover', scale: 100, transform: null, adjustments: {} }; }
+				if (f.type === 'solid') { f.color = f.color || '#D10A0A'; }
+			}); });
+			const fields = [head, h('div', { class: 'row one' }, h('div', { class: 'field' }, h('label', {}, 'Tipo'), type)),
+				h('div', { class: 'row' }, customNum('Opac.', fill, 'opacity', { min: 0, max: 1, step: 0.01, def: 1, set: v => updateFill(n, key, index, f => { f.opacity = v; }) }), fillSelect('Mescl.', fill, 'blend', [['', 'Normal'], ['multiply', 'Multiplicar'], ['screen', 'Tela'], ['overlay', 'Sobrepor'], ['darken', 'Escurecer'], ['lighten', 'Clarear'], ['soft-light', 'Luz suave'], ['difference', 'Diferença']], v => updateFill(n, key, index, f => { f.blend = v; })) )];
+			if (fill.type === 'solid') { fields.push(h('div', { class: 'row one' }, customColor('Cor', fill, 'color', '#D10A0A', v => updateFill(n, key, index, f => { f.color = v; }), anchor => { const f = fillAt(n, key, index); bindField(f, 'color', 'color', anchor); }))); }
+			if (['linear', 'radial', 'conic'].includes(fill.type)) {
+				fill.gradient = fill.gradient || { angle: 180, shape: 'circle', stops: [{ color: '#FFFFFF', pos: 0, opacity: 1 }, { color: '#000000', pos: 100, opacity: 1 }] };
+				if (fill.type !== 'radial') { fields.push(h('div', { class: 'row one' }, customNum('Ângulo', fill.gradient, 'angle', { min: 0, max: 360, set: v => updateFill(n, key, index, f => { f.gradient.angle = v; }) }))); }
+				else { fields.push(h('div', { class: 'row one' }, fillSelect('Forma', fill.gradient, 'shape', [['circle', 'Círculo'], ['ellipse', 'Elipse']], v => updateFill(n, key, index, f => { f.gradient.shape = v; })))); }
+				for (const [si, stop] of fill.gradient.stops.entries()) {
+					fields.push(h('div', { class: 'gradient-stop' },
+						customColor(`${si + 1}`, stop, 'color', '#000000', v => updateFill(n, key, index, f => { f.gradient.stops[si].color = v; }), anchor => { const f = fillAt(n, key, index); bindField(f.gradient.stops[si], 'color', 'color', anchor); }),
+						customNum('%', stop, 'pos', { min: 0, max: 100, set: v => updateFill(n, key, index, f => { f.gradient.stops[si].pos = v; }) }),
+						customNum('α', stop, 'opacity', { min: 0, max: 1, step: 0.05, def: 1, set: v => updateFill(n, key, index, f => { f.gradient.stops[si].opacity = v; }) }),
+						fill.gradient.stops.length > 2 ? h('button', { class: 'btn mini', title: 'Remover cor', onclick: () => updateFill(n, key, index, f => { f.gradient.stops.splice(si, 1); }) }, '×') : null));
+				}
+				fields.push(h('div', { class: 'btnrow' }, h('button', { class: 'btn', onclick: () => updateFill(n, key, index, f => { f.gradient.stops.push({ color: '#FFFFFF', pos: 50, opacity: 1 }); f.gradient.stops.sort((a, b) => a.pos - b.pos); }) }, '+ Cor no degradê')));
+			}
+			if (fill.type === 'image') {
+				fill.image = fill.image || { src: '', mode: 'cover', scale: 100, transform: null, adjustments: {} };
+				const image = fill.image;
+				fields.push(h('div', { class: 'row one' }, h('div', { class: 'field' }, h('label', {}, 'Arquivo'), h('input', { value: image.src || '', disabled: true }), h('button', { class: 'btn mini', onclick: () => imagePickerForFill(n, fill, index) }, image.src ? 'Trocar' : 'Escolher'))),
+					h('div', { class: 'row one' }, fillSelect('Ajuste', image, 'mode', [['cover', 'Preencher'], ['contain', 'Caber'], ['crop', 'Cortar'], ['tile', 'Lado a lado'], ['stretch', 'Esticar'], ['none', 'Tamanho original'], ['scale-down', 'Reduzir se precisar']], v => v === 'crop' ? enterCrop(n, fill, index) : updateFill(n, key, index, f => { f.image.mode = v; }))),
+					image.mode === 'tile' ? h('div', { class: 'row one' }, customNum('Escala', image, 'scale', { min: 1, max: 500, unit: '%', def: 100 })) : null,
+					h('div', { class: 'btnrow' },
+						h('button', { class: 'btn', disabled: !image.src, onclick: () => enterCrop(n, fill, index) }, 'Cortar'),
+						h('button', { class: 'btn', onclick: () => updateFill(n, key, index, f => { f.image.rotation = ((resolveNum(f.image.rotation) + 90) % 360); }) }, '↻ Girar 90°'),
+						h('button', { class: 'btn', onclick: () => addImageOverlay(n, key, index, false) }, '+ Sobreposição (overlay)'),
+						h('button', { class: 'btn', onclick: () => addImageOverlay(n, key, index, true) }, '+ Degradê por cima')),
+						h('div', { class: 'row one' }, h('div', { class: 'image-adjustments' },
+							h('strong', {}, 'Ajustes da imagem'),
+						...[["exposure", "Exposição", -1, 1, 0.05], ["contrast", "Contraste", 0, 200, 1], ["saturation", "Saturação", 0, 200, 1], ["temperature", "Temperatura", -100, 100, 1], ["tint", "Matiz / tint", -180, 180, 1], ["highlights", "Realces", -100, 100, 1], ["shadows", "Sombras", -100, 100, 1]].map(([prop, label, min, max, step]) => {
+							const value = h('span', { class: 'unit' }, String(image.adjustments?.[prop] ?? (prop === 'contrast' || prop === 'saturation' ? 100 : 0)));
+							const input = h('input', { type: 'range', min, max, step, value: image.adjustments?.[prop] ?? (prop === 'contrast' || prop === 'saturation' ? 100 : 0) });
+							input.addEventListener('input', () => { value.textContent = input.value; updateFill(n, key, index, f => { f.image.adjustments = f.image.adjustments || {}; f.image.adjustments[prop] = Number(input.value); }); });
+							return h('div', { class: 'adjustment-row' }, h('label', {}, label), input, value);
+						}))))
+			}
+			rows.push(h('div', { class: 'fill-card' }, ...fields));
+		}
+		rows.push(h('div', { class: 'btnrow' },
+			h('button', { class: 'btn', title: 'Adicionar preenchimento acima', onclick: () => addFill(n, 'solid', 0) }, '+ Adicionar preenchimento'),
+			h('button', { class: 'btn', onclick: () => addFill(n, 'linear', 0) }, '+ Degradê')));
+		return section(n.type === 'text' ? 'Preenchimento' : 'Preenchimento', ...rows);
+	}
+	function gridPreset(frame, preset) {
+		const mobile = frame.preset === 'mobile' || frame.w <= 480;
+		const base = { visible: true, color: '#FF000019', type: 'columns', count: mobile ? 4 : 12, gutter: mobile ? 16 : 20, margin: mobile ? 16 : 20, offset: 0, align: 'stretch', width: 0 };
+		if (preset === 'grid8') { Object.assign(base, { type: 'grid', size: 8 }); }
+		if (preset === 'columns') { Object.assign(base, { type: 'columns', count: 12, gutter: 20, margin: 20, align: 'stretch' }); }
+		if (preset === 'mobile') { Object.assign(base, { type: 'columns', count: 4, gutter: 16, margin: 16, align: 'stretch' }); }
+		if (preset === 'rows8') { Object.assign(base, { type: 'rows', preset: 'rows8', size: 8, count: 0, gutter: 0, margin: 0, offset: 0, align: 'top', width: 0 }); }
+		frame.layoutGrids = frame.layoutGrids || [];
+		frame.layoutGrids.push(base); commit(true); render();
+	}
+	function gridColorField(grid, index) {
+		const c = DevStyle.parseColor(grid.color || '#FF000019');
+		const pick = h('input', { type: 'color', value: c.hex });
+		const alpha = h('input', { type: 'range', min: 0, max: 100, value: Math.round(c.a * 100), title: 'Opacidade da cor' });
+		const save = () => { grid.color = DevStyle.toColor(pick.value, Math.max(0, Math.min(100, Number(alpha.value))) / 100); commit(); render(); };
+		pick.addEventListener('input', save); alpha.addEventListener('input', save);
+		return h('div', { class: 'field' }, h('label', {}, 'Cor'), pick, alpha);
+	}
+	function layoutGridSection(frame) {
+		const grids = frame.layoutGrids || [];
+		const rows = [];
+		for (const [index, grid] of grids.entries()) {
+			const type = grid.type || 'columns';
+			const head = h('div', { class: 'grid-head' },
+				h('strong', {}, type === 'grid' ? 'Grade' : type === 'rows' ? 'Linhas' : 'Colunas'),
+				h('button', { class: 'btn mini', title: grid.visible === false ? 'Mostrar grade' : 'Ocultar grade', onclick: () => { grid.visible = grid.visible === false; commit(true); render(); } }, grid.visible === false ? '◉' : '◌'),
+				h('button', { class: 'btn mini', title: 'Remover grade', onclick: () => { frame.layoutGrids.splice(index, 1); commit(true); render(); } }, '×'));
+			const typeSel = fillSelect('Tipo', grid, 'type', [['grid', 'Grade'], ['columns', 'Colunas'], ['rows', 'Linhas']], v => { grid.type = v; delete grid.preset; commit(true); render(); });
+			const card = [head, h('div', { class: 'row one' }, typeSel), h('div', { class: 'row one' }, gridColorField(grid, index))];
+			if (grid.type === 'grid' || grid.preset === 'rows8') { card.push(h('div', { class: 'row one' }, customNum('Tamanho', grid, 'size', { min: 1, def: 8 }))); }
+			else {
+				card.push(h('div', { class: 'row' }, customNum('Qtd.', grid, 'count', { min: 1, max: 100, def: 12 }), customNum(grid.type === 'rows' ? 'Espaço' : 'Espaço', grid, 'gutter', { min: 0, def: 20 })));
+				card.push(h('div', { class: 'row' }, customNum('Margem', grid, 'margin', { min: 0, def: 20 }), customNum('Desloc.', grid, 'offset', { def: 0 })));
+				const aligns = grid.type === 'rows' ? [['stretch', 'Esticar'], ['top', 'Topo'], ['center', 'Centro'], ['bottom', 'Base']] : [['stretch', 'Esticar'], ['left', 'Esquerda'], ['center', 'Centro'], ['right', 'Direita']];
+				card.push(h('div', { class: 'row' }, fillSelect('Alinhar', grid, 'align', aligns, v => { grid.align = v; commit(true); render(); }), grid.align !== 'stretch' ? customNum(grid.type === 'rows' ? 'Altura' : 'Largura', grid, 'width', { min: 1, def: 80 }) : h('div')));
+			}
+			rows.push(h('div', { class: 'grid-card' }, ...card));
+		}
+		const preset = h('select', {}, h('option', { value: '' }, 'Presets…'), h('option', { value: 'grid8' }, 'Grade 8px'), h('option', { value: 'columns' }, '12 colunas'), h('option', { value: 'mobile' }, '4 colunas (mobile)'), h('option', { value: 'rows8' }, 'Linhas 8px'));
+		preset.addEventListener('change', () => { const value = preset.value; preset.blur(); if (value) { gridPreset(frame, value); } });
+		return section('Grade de layout', ...rows, h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => gridPreset(frame, frame.preset === 'mobile' || frame.w <= 480 ? 'mobile' : 'columns') }, '+ Adicionar'), h('div', { class: 'field' }, h('label', {}, 'Preset'), preset)));
+	}
 
 	function renderProps(force) {
 		// não reconstrói o painel enquanto o aluno digita num campo dele
@@ -500,7 +1000,7 @@
 					h('button', { class: 'btn primary', onclick: () => addFrame('mobile') }, '📱 + Frame Mobile'),
 					h('button', { class: 'btn primary', onclick: () => addFrame('desktop') }, '🖥 + Frame Desktop')),
 			), section('Atalhos', h('div', { class: 'empty', style: { whiteSpace: 'pre-line' } },
-				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nCtrl+G agrupar · Ctrl+Shift+G desagrupar\nClique duplo num grupo = selecionar dentro dele · Esc = voltar ao grupo\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar\nArraste camadas no painel para mudar a ordem ou colocar dentro de frames/grupos\nArraste imagens do Windows Explorer para a tela')));
+				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nCtrl+G agrupar · Ctrl+Shift+G desagrupar\nEnter ou duplo clique numa imagem = modo Cortar · arraste para reposicionar; Esc/Enter conclui\nCtrl+Shift+4 ou ▦ Grades = mostrar/ocultar grades\nAlt+arrastar = desativar encaixe\nClique duplo num grupo = selecionar dentro dele · Esc = voltar ao grupo\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar\nArraste camadas no painel para mudar a ordem ou colocar dentro de frames/grupos\nArraste imagens do Windows Explorer para a tela')));
 			return;
 		}
 		if (nodes.length > 1) {
@@ -542,6 +1042,7 @@
 			));
 			const sel = propsEl.querySelector('select');
 			sel.addEventListener('change', () => { const p = PRESETS[n.preset]; if (p) { n.w = p.w; n.h = p.h; commit(true); render(); } });
+			propsEl.append(layoutGridSection(n));
 		}
 		if (n.type === 'text') {
 			const ta = h('textarea', {}, n.text);
@@ -549,17 +1050,11 @@
 			ta.addEventListener('keydown', e => e.stopPropagation());
 			propsEl.append(section('Conteúdo', h('div', { class: 'row one' }, h('div', { class: 'field tall' }, ta))));
 		}
-		if (n.type === 'image') {
-			propsEl.append(section('Imagem',
-				h('div', { class: 'row one' }, h('div', { class: 'field' }, h('label', {}, 'Arquivo'), h('input', { value: n.src, disabled: true }))),
-				h('div', { class: 'row' }, select('Ajuste', n, 'fit', [['cover', 'Preencher'], ['contain', 'Caber'], ['fill', 'Esticar'], ['none', 'Tamanho original'], ['scale-down', 'Reduzir se precisar']]),
-					select('Posição', n, 'imagePosition', [['center', 'Centro'], ['top', 'Topo'], ['bottom', 'Base'], ['left', 'Esquerda'], ['right', 'Direita']])),
-				h('div', { class: 'btnrow' }, h('button', { class: 'btn', onclick: () => vscode.postMessage({ type: 'pickImage', replace: n.id }) }, 'Trocar imagem')),
-			));
-		}
+		const fillSection = fillStackSection(n);
+		if (fillSection) { propsEl.append(fillSection); }
 		// estilos completos (CSS): aparência, preenchimento, borda, cantos, padding, sombras, contorno, tipografia, filtros, CSS livre
 		const refresh = () => { document.activeElement?.blur?.(); renderProps(true); };
-		propsEl.append(...DevStyle.panel(n, (obj, key, value) => setProp(obj, key, value), refresh));
+		propsEl.append(...DevStyle.panel(n, (obj, key, value) => setProp(obj, key, value), refresh, variableContext(n)));
 		propsEl.append(h('div', { class: 'btnrow', style: { paddingTop: '10px' } },
 			h('button', { class: 'btn', onclick: duplicateSelected }, '⧉ Duplicar'),
 			n.type !== 'frame' ? h('button', { class: 'btn', onclick: groupSelected, title: 'Ctrl+G' }, '▣ Agrupar') : null,
@@ -628,7 +1123,17 @@
 		for (const it of items) { if (it.uri) { images[it.src] = it.uri; } }
 		if (msg.replace) {
 			const n = find(msg.replace)?.node;
-			if (n && items[0]) { n.src = items[0].src; requestImages(); commit(true); render(); }
+			if (n && items[0]) {
+				if (msg.fillId) {
+					const fills = ensureFills(n);
+					const fill = fills.find(f => f.id === msg.fillId);
+					if (fill) {
+						fill.type = 'image'; fill.image = { ...(fill.image || {}), src: items[0].src };
+						if (n.type === 'image') { n.src = items[0].src; }
+					}
+				} else { n.src = items[0].src; }
+				requestImages(); commit(true); render();
+			}
 			return;
 		}
 		let at = msg.at;
@@ -780,6 +1285,8 @@
 				const gi = path.findIndex(x => x.id === target);
 				selection = new Set([path[gi + 1]?.id || el.dataset.id]); render(); return;
 			}
+			const imageFill = n && getFills(n).map((f, i) => ({ fill: f, index: i })).find(x => x.fill.type === 'image' && x.fill.visible !== false);
+			if (imageFill && !el.dataset.label) { enterCrop(n, imageFill.fill, imageFill.index); return; }
 			if (n?.type === 'text' && !n.locked) { editingTextId = n.id; selection = new Set([n.id]); render(); }
 			if (n?.type === 'frame' && el.dataset.label) { renamingId = n.id; render(); }
 		});
@@ -791,6 +1298,15 @@
 			if (e.button === 1 || spaceDown) { drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; stage.classList.add('panning'); stage.setPointerCapture(e.pointerId); return; }
 			if (e.button !== 0) { return; }
 			stage.setPointerCapture(e.pointerId);
+			if (cropMode) {
+				const target = cropTarget();
+				const imageHandle = e.target.closest('[data-crop-image-handle]');
+				const windowHandle = e.target.closest('[data-crop-window-handle]');
+				if (target && imageHandle) { drag = { kind: 'crop-image-resize', handle: imageHandle.dataset.cropImageHandle, nodeId: target.node.id, fillId: target.fill.id, orig: clone(fillImageTransform(target.node, target.fill)), sx: w.x, sy: w.y }; return; }
+				if (target && e.target.closest('[data-crop-move]')) { drag = { kind: 'crop-image-move', nodeId: target.node.id, fillId: target.fill.id, orig: clone(fillImageTransform(target.node, target.fill)), sx: w.x, sy: w.y }; return; }
+				if (target && windowHandle) { drag = { kind: 'crop-window-resize', handle: windowHandle.dataset.cropWindowHandle, nodeId: target.node.id, fillId: target.fill.id, origNode: clone(target.node), orig: clone(fillImageTransform(target.node, target.fill)), sx: w.x, sy: w.y }; return; }
+				if (!e.target.closest('[data-crop-ui]')) { exitCrop(); }
+			}
 
 			if (tool === 'frame-mobile' || tool === 'frame-desktop') { addFrame(tool === 'frame-mobile' ? 'mobile' : 'desktop', w); return; }
 			if (tool === 'text') {
@@ -835,6 +1351,32 @@
 			if (!drag) { return; }
 			const w = toWorld(e.clientX, e.clientY);
 			if (drag.kind === 'pan') { view.x = drag.vx + (e.clientX - drag.sx); view.y = drag.vy + (e.clientY - drag.sy); render(); return; }
+			if (drag.kind === 'crop-image-move' || drag.kind === 'crop-image-resize' || drag.kind === 'crop-window-resize') {
+				const n = find(drag.nodeId)?.node, fill = n && getFills(n).find(f => f.id === drag.fillId);
+				if (!n || !fill) { return; }
+				let transform = clone(drag.orig);
+				if (drag.kind === 'crop-image-move') {
+					transform.x = round(drag.orig.x + w.x - drag.sx); transform.y = round(drag.orig.y + w.y - drag.sy);
+				} else if (drag.kind === 'crop-image-resize') {
+					const hd = drag.handle, anchorX = hd.includes('w') ? drag.orig.x + drag.orig.w : drag.orig.x, anchorY = hd.includes('n') ? drag.orig.y + drag.orig.h : drag.orig.y;
+					const px = w.x - n.x, py = w.y - n.y;
+					const scale = Math.max(Math.abs(anchorX - px) / Math.max(1, drag.orig.w), Math.abs(anchorY - py) / Math.max(1, drag.orig.h), 0.02);
+					transform.w = round(Math.max(1, drag.orig.w * scale)); transform.h = round(Math.max(1, drag.orig.h * scale));
+					transform.x = round(hd.includes('w') ? anchorX - transform.w : anchorX); transform.y = round(hd.includes('n') ? anchorY - transform.h : anchorY);
+				} else {
+					const o = drag.origNode, hd = drag.handle, dx = w.x - drag.sx, dy = w.y - drag.sy;
+					let x = o.x, y = o.y, W = o.w, H = o.h;
+					if (hd.includes('e')) { W = o.w + dx; } if (hd.includes('s')) { H = o.h + dy; }
+					if (hd.includes('w')) { W = o.w - dx; x = o.x + dx; } if (hd.includes('n')) { H = o.h - dy; y = o.y + dy; }
+					W = Math.max(1, W); H = Math.max(1, H);
+					({ x, y, w: W, h: H } = snapBox(n, { x, y, w: W, h: H }, e.altKey));
+					Object.assign(n, { x: round(x), y: round(y), w: round(W), h: round(H) });
+					transform.x = round(o.x + drag.orig.x - n.x); transform.y = round(o.y + drag.orig.y - n.y);
+					if (n.type === 'frame') { n.preset = 'custom'; }
+				}
+				fill.image.transform = transform; if (n.type === 'image') { n.imageTransform = clone(transform); }
+				render(); return;
+			}
 			if (drag.kind === 'draw') {
 				const n = drag.node; let dx = w.x - drag.sx, dy = w.y - drag.sy;
 				if (n.type === 'line') {
@@ -847,9 +1389,10 @@
 				render(); return;
 			}
 			if (drag.kind === 'move') {
-				const dx = w.x - drag.last.x, dy = w.y - drag.last.y;
+			let dx = w.x - drag.last.x, dy = w.y - drag.last.y;
 				if (!drag.moved && Math.hypot(w.x - drag.sx, w.y - drag.sy) * view.zoom < 3) { return; }
 				drag.moved = true; drag.last = { x: w.x, y: w.y };
+				if (drag.nodes.length) { ({ x: dx, y: dy } = snappedDelta(drag.nodes[0], dx, dy, e.altKey)); }
 				for (const n of drag.nodes) { moveNode(n, dx, dy); }
 				render(); return;
 			}
@@ -861,6 +1404,7 @@
 				if (hd.includes('w')) { W = o.w - dx; x = o.x + dx; } if (hd.includes('n')) { H = o.h - dy; y = o.y + dy; }
 				if (e.shiftKey && o.w && o.h && hd.length === 2) { const r = o.w / o.h; if (Math.abs(W / r) > Math.abs(H)) { H = W / r; } else { W = H * r; } if (hd.includes('n')) { y = o.y + o.h - H; } if (hd.includes('w')) { x = o.x + o.w - W; } }
 				if (n.type !== 'line') { if (W < 1) { W = 1; } if (H < 1) { H = 1; } }
+				({ x, y, w: W, h: H } = snapBox(n, { x, y, w: W, h: H }, e.altKey));
 				Object.assign(n, { x: round(x), y: round(y), w: round(W), h: round(H) });
 				if (n.type === 'frame') { n.preset = 'custom'; }
 				render(); return;
@@ -892,7 +1436,7 @@
 				// ao soltar dentro/fora de um frame, a camada passa a pertencer a ele
 				for (const n of drag.nodes) { if (n.type !== 'frame') { reparent(n); } }
 				commit(true);
-			} else if (drag.kind === 'resize') { commit(true); }
+			} else if (drag.kind === 'resize' || drag.kind.startsWith('crop-')) { commit(true); }
 			drag = null; render();
 		};
 		stage.addEventListener('pointerup', end);
@@ -922,13 +1466,19 @@
 		if (e.key === ' ' && !editingTextId && !isTyping(e)) { spaceDown = true; stage?.classList.add('space'); e.preventDefault(); return; }
 		if (editingTextId) { if (e.key === 'Escape') { finishTextEdit(); } return; }
 		if (isTyping(e) || !model) { return; }
+		if (cropMode && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitCrop(); return; }
 		const ctrl = e.ctrlKey || e.metaKey;
+		if (ctrl && e.shiftKey && (e.code === 'Digit4' || e.key === '$' || e.key === '4')) { e.preventDefault(); toggleGrids(); return; }
 		if (ctrl && (e.key === 'z' || e.key === 'y' || e.key === 'Z')) { return; } // desfazer/refazer: o próprio editor faz
 		if (ctrl && e.key.toLowerCase() === 'g') { e.preventDefault(); if (e.shiftKey) { ungroupSelected(); } else { groupSelected(); } return; }
 		if (ctrl && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
 		if (ctrl && e.key.toLowerCase() === 'a') { e.preventDefault(); selection = new Set(model.nodes.map(n => n.id)); render(); return; }
 		if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); return; }
 		if (e.key === 'Escape') { selection.clear(); setTool('select'); render(); return; }
+		if (e.key === 'Enter' && selected().length === 1) {
+			const n = selected()[0], image = getFills(n).map((fill, index) => ({ fill, index })).find(x => x.fill.type === 'image' && x.fill.visible !== false);
+			if (image) { e.preventDefault(); enterCrop(n, image.fill, image.index); return; }
+		}
 		if (e.shiftKey && e.key === '!') { fitAll(); return; }
 		if (e.key.startsWith('Arrow')) {
 			e.preventDefault(); const s = e.shiftKey ? 10 : 1;
@@ -956,6 +1506,8 @@
 		} catch (err) { vscode.postMessage({ type: 'error', message: `Não foi possível exportar: ${err.message}` }); }
 	}
 
+	document.addEventListener('paste', e => e.preventDefault(), true);
+	document.addEventListener('pointerdown', e => { if (cropMode && stage && !stage.contains(e.target)) { exitCrop(); } }, true);
 	window.addEventListener('resize', () => render());
 	vscode.postMessage({ type: 'ready' });
 })();

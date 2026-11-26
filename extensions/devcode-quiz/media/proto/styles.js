@@ -22,14 +22,22 @@ window.DevStyle = (function () {
 	// ================================================================== CSS a partir do modelo
 	const SYSTEM_FONTS = new Set(['Segoe UI', 'Arial', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Georgia', 'Times New Roman', 'Courier New', 'Consolas', 'Impact', 'sans-serif', 'serif', 'monospace']);
 
-	function fillCss(n) {
+	function fillCss(n, context = {}) {
 		const type = n.fillType || 'solid';
+		const color = value => context.resolveColor ? context.resolveColor(value) : value;
+		const number = value => context.resolveNum ? context.resolveNum(value) : value;
 		if (type === 'none') { return 'transparent'; }
-		if (type === 'linear' || type === 'radial') {
-			const stops = (n.gradient?.stops?.length ? n.gradient.stops : [{ color: '#D10A0A', pos: 0 }, { color: '#111111', pos: 100 }]).map(s => `${s.color} ${s.pos}%`).join(', ');
-			return type === 'linear' ? `linear-gradient(${n.gradient?.angle ?? 180}deg, ${stops})` : `radial-gradient(${n.gradient?.shape || 'circle'} at center, ${stops})`;
+		if (type === 'linear' || type === 'radial' || type === 'conic') {
+			const stops = (n.gradient?.stops?.length ? n.gradient.stops : [{ color: '#D10A0A', pos: 0 }, { color: '#111111', pos: 100 }]).map(s => {
+				const raw = color(s.color), c = parseColor(raw), opacity = number(s.opacity ?? 1) ?? 1;
+				const resolved = c.raw ? (opacity >= 1 ? raw : `color-mix(in srgb, ${raw} ${opacity * 100}%, transparent)`) : toColor(c.hex, c.a * opacity);
+				return `${resolved} ${number(s.pos ?? 0)}%`;
+			}).join(', ');
+			if (type === 'linear') { return `linear-gradient(${number(n.gradient?.angle ?? 180)}deg, ${stops})`; }
+			if (type === 'conic') { return `conic-gradient(from ${number(n.gradient?.angle ?? 0)}deg, ${stops})`; }
+			return `radial-gradient(${n.gradient?.shape || 'circle'} at center, ${stops})`;
 		}
-		return n.fill || 'transparent';
+		return color(n.fill) || 'transparent';
 	}
 	function shadowsOf(n) {
 		const list = Array.isArray(n.shadows) ? n.shadows : [];
@@ -48,54 +56,69 @@ window.DevStyle = (function () {
 		if (f.hueRotate) { parts.push(`hue-rotate(${f.hueRotate}deg)`); }
 		return parts.join(' ');
 	}
+	function imageFilterCss(a = {}) {
+		const exposure = Number(a.exposure) || 0;
+		const highlights = Number(a.highlights) || 0;
+		const shadows = Number(a.shadows) || 0;
+		const temp = Number(a.temperature) || 0;
+		return filterCss({
+			brightness: Math.max(0, 100 + exposure * 35 + highlights * 0.16 + shadows * 0.12),
+			contrast: a.contrast ?? 100,
+			saturate: a.saturation ?? 100,
+			sepia: Math.abs(temp) * 0.4,
+			hueRotate: (Number(a.tint) || 0) + temp * 0.22,
+		});
+	}
 
 	/** Aplica todos os estilos do nó (caixa + texto + CSS personalizado) no elemento. */
-	function apply(el, n) {
+	function apply(el, n, context = {}) {
 		const s = el.style;
+		const color = value => context.resolveColor ? context.resolveColor(value) : value;
+		const number = value => context.resolveNum ? context.resolveNum(value) : value;
 		// grupo: só um contêiner transparente (opacidade, mesclagem, transformações, filtros e CSS livre)
 		const isBox = n.type !== 'line' && n.type !== 'group';
-		s.opacity = n.opacity ?? 1;
+		s.opacity = number(n.opacity ?? 1);
 		const tr = [];
-		if (n.rotation) { tr.push(`rotate(${n.rotation}deg)`); }
-		if (n.skewX) { tr.push(`skewX(${n.skewX}deg)`); }
-		if (n.skewY) { tr.push(`skewY(${n.skewY}deg)`); }
+		if (n.rotation) { tr.push(`rotate(${number(n.rotation)}deg)`); }
+		if (n.skewX) { tr.push(`skewX(${number(n.skewX)}deg)`); }
+		if (n.skewY) { tr.push(`skewY(${number(n.skewY)}deg)`); }
 		if (n.flipX) { tr.push('scaleX(-1)'); }
 		if (n.flipY) { tr.push('scaleY(-1)'); }
 		s.transform = tr.join(' ');
 		s.mixBlendMode = n.blend || '';
 		s.filter = filterCss(n.filters);
-		s.backdropFilter = n.backdropBlur ? `blur(${n.backdropBlur}px)` : '';
+		s.backdropFilter = n.backdropBlur ? `blur(${number(n.backdropBlur)}px)` : '';
 		if (isBox) {
-			s.background = n.type === 'text' && (!n.fillType || n.fillType === 'solid') && (!n.fill || n.fill === 'transparent') ? '' : fillCss(n);
+			s.background = context.renderFillStack || Array.isArray(n.fills) ? '' : n.type === 'text' && (!n.fillType || n.fillType === 'solid') && (!n.fill || n.fill === 'transparent') ? '' : fillCss(n, context);
 			// borda (estilo/cor comuns, espessura geral ou por lado)
-			const bw = n.strokeWidth || 0, bs = n.borderStyle || 'solid', bc = n.stroke || '#111111';
+			const bw = number(n.strokeWidth || 0), bs = n.borderStyle || 'solid', bc = color(n.stroke || '#111111');
 			if (n.borderSides) {
 				const [t, r, b, l] = n.borderSides;
-				s.borderTop = `${t}px ${bs} ${bc}`; s.borderRight = `${r}px ${bs} ${bc}`; s.borderBottom = `${b}px ${bs} ${bc}`; s.borderLeft = `${l}px ${bs} ${bc}`;
+				s.borderTop = `${number(t)}px ${bs} ${bc}`; s.borderRight = `${number(r)}px ${bs} ${bc}`; s.borderBottom = `${number(b)}px ${bs} ${bc}`; s.borderLeft = `${number(l)}px ${bs} ${bc}`;
 			} else { s.border = bw ? `${bw}px ${bs} ${bc}` : 'none'; }
 			// cantos
 			if (n.type === 'ellipse') { s.borderRadius = '50%'; }
-			else if (n.radii) { s.borderRadius = n.radii.map(r => `${r}px`).join(' '); }
-			else { s.borderRadius = `${n.radius || 0}px`; }
+			else if (n.radii) { s.borderRadius = n.radii.map(r => `${number(r)}px`).join(' '); }
+			else { s.borderRadius = `${number(n.radius || 0)}px`; }
 			// sombras
 			const sh = shadowsOf(n);
-			s.boxShadow = sh.map(x => `${x.inset ? 'inset ' : ''}${x.x}px ${x.y}px ${x.blur}px ${x.spread || 0}px ${x.color}`).join(', ') + (n.type === 'frame' && !sh.length ? '0 1px 3px #0002' : '');
+			s.boxShadow = sh.map(x => `${x.inset ? 'inset ' : ''}${number(x.x)}px ${number(x.y)}px ${number(x.blur)}px ${number(x.spread || 0)}px ${color(x.color)}`).join(', ') + (n.type === 'frame' && !sh.length ? '0 1px 3px #0002' : '');
 			// contorno (outline)
-			s.outline = n.outline?.width ? `${n.outline.width}px ${n.outline.style || 'solid'} ${n.outline.color || '#0D99FF'}` : '';
-			s.outlineOffset = n.outline?.offset ? `${n.outline.offset}px` : '';
-			s.padding = n.padding ? n.padding.map(p => `${p}px`).join(' ') : '';
+			s.outline = n.outline?.width ? `${number(n.outline.width)}px ${n.outline.style || 'solid'} ${color(n.outline.color || '#0D99FF')}` : '';
+			s.outlineOffset = n.outline?.offset ? `${number(n.outline.offset)}px` : '';
+			s.padding = n.padding ? n.padding.map(p => `${number(p)}px`).join(' ') : '';
 			s.boxSizing = 'border-box';
 		}
 		if (n.type === 'text') {
-			s.color = n.color; s.fontSize = `${n.fontSize}px`; s.fontWeight = n.fontWeight;
+			s.color = color(n.color); s.fontSize = `${number(n.fontSize)}px`; s.fontWeight = n.fontWeight;
 			s.fontFamily = `'${n.fontFamily}', ${n.fontFallback || 'sans-serif'}`;
 			s.fontStyle = n.italic ? 'italic' : 'normal';
-			s.lineHeight = n.lineHeight || 1.25; s.letterSpacing = `${n.letterSpacing || 0}px`; s.wordSpacing = n.wordSpacing ? `${n.wordSpacing}px` : '';
-			s.textAlign = n.align || 'left'; s.textTransform = n.transform || 'none'; s.textIndent = n.textIndent ? `${n.textIndent}px` : '';
+			s.lineHeight = number(n.lineHeight || 1.25); s.letterSpacing = `${number(n.letterSpacing || 0)}px`; s.wordSpacing = n.wordSpacing ? `${number(n.wordSpacing)}px` : '';
+			s.textAlign = n.align || 'left'; s.textTransform = n.transform || 'none'; s.textIndent = n.textIndent ? `${number(n.textIndent)}px` : '';
 			const deco = [n.underline && 'underline', n.lineThrough && 'line-through', n.overline && 'overline'].filter(Boolean);
 			s.textDecorationLine = deco.join(' ') || 'none'; s.textDecorationStyle = n.decorationStyle || 'solid';
-			s.textDecorationColor = n.decorationColor || ''; s.textDecorationThickness = n.decorationThickness ? `${n.decorationThickness}px` : '';
-			s.textShadow = (n.textShadows || []).map(t => `${t.x}px ${t.y}px ${t.blur}px ${t.color}`).join(', ');
+			s.textDecorationColor = color(n.decorationColor) || ''; s.textDecorationThickness = n.decorationThickness ? `${number(n.decorationThickness)}px` : '';
+			s.textShadow = (n.textShadows || []).map(t => `${number(t.x)}px ${number(t.y)}px ${number(t.blur)}px ${color(t.color)}`).join(', ');
 			s.display = 'flex'; s.flexDirection = 'column';
 			s.justifyContent = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[n.vAlign || 'top'];
 			s.whiteSpace = n.noWrap ? 'nowrap' : 'pre-wrap';
@@ -159,14 +182,28 @@ window.DevStyle = (function () {
 	}
 	const stop = e => e.stopPropagation();
 
-	function Fields(set) {
+	function Fields(set, context = {}) {
 		const F = {};
+		const resolved = (obj, key, kind, fallback) => {
+			const value = obj[key] ?? fallback;
+			const fn = kind === 'color' ? context.resolveColor : context.resolveNum;
+			return fn ? fn(value) : value;
+		};
+		const binding = (obj, key, kind) => {
+			if (!context.bindField || (context.canBind && !context.canBind(obj, key, kind))) { return null; }
+			const id = obj[key] && typeof obj[key] === 'object' ? obj[key].var : null;
+			const item = (context.variables?.[kind === 'color' ? 'colors' : 'numbers'] || []).find(v => v.id === id);
+			return make('span', { class: 'binding-tools' },
+				id ? make('span', { class: 'binding-chip', title: item?.name || '' }, `◆ ${item?.name || 'variável'}`) : null,
+				make('button', { class: 'bind-btn', title: id ? 'Desvincular variável' : 'Vincular a uma variável', onclick: e => context.bindField(obj, key, kind, e.currentTarget) }, id ? '×' : '◆'));
+		};
 		F.section = (title, ...rows) => make('div', { class: 'section' }, make('h3', {}, title), ...rows);
 		F.row = (...items) => make('div', { class: `row ${items.length === 1 ? 'one' : items.length === 3 ? 'three' : items.length === 4 ? 'four' : ''}` }, ...items);
 		F.num = (label, obj, key, o = {}) => {
-			const inp = make('input', { type: 'number', value: obj[key] ?? o.def ?? 0, step: o.step || 1, min: o.min, max: o.max, onkeydown: stop });
+			const bound = !!obj[key]?.var;
+			const inp = make('input', { type: 'number', value: resolved(obj, key, 'number', o.def ?? 0), step: o.step || 1, min: o.min, max: o.max, disabled: bound, onkeydown: stop });
 			inp.addEventListener('input', () => { let v = parseFloat(inp.value); if (isNaN(v)) { return; } if (o.min !== undefined) { v = Math.max(o.min, v); } if (o.max !== undefined) { v = Math.min(o.max, v); } set(obj, key, v); });
-			return make('div', { class: 'field', title: o.title || '' }, make('label', {}, label), inp, o.unit ? make('span', { class: 'unit' }, o.unit) : null);
+			return make('div', { class: 'field', title: o.title || '' }, make('label', {}, label), inp, o.unit ? make('span', { class: 'unit' }, o.unit) : null, binding(obj, key, 'number'));
 		};
 		F.range = (label, obj, key, o) => {
 			const val = obj[key] ?? o.def;
@@ -176,13 +213,15 @@ window.DevStyle = (function () {
 			return make('div', { class: 'field', title: o.title || '' }, make('label', {}, label), inp, out);
 		};
 		F.color = (label, obj, key, o = {}) => {
-			const c = parseColor(obj[key] ?? o.def);
+			const bound = !!obj[key]?.var;
+			const c = parseColor(resolved(obj, key, 'color', o.def));
 			const pick = make('input', { type: 'color', value: c.hex });
-			const alpha = make('input', { type: 'number', min: 0, max: 100, step: 5, value: Math.round(c.a * 100), title: 'Opacidade da cor (%)', class: 'alpha', onkeydown: stop });
+			const alpha = make('input', { type: 'number', min: 0, max: 100, step: 5, value: Math.round(c.a * 100), title: 'Opacidade da cor (%)', class: 'alpha', disabled: bound, onkeydown: stop });
+			pick.disabled = bound;
 			const commitColor = () => set(obj, key, toColor(pick.value, Math.min(100, Math.max(0, +alpha.value || 0)) / 100));
 			pick.addEventListener('input', () => { if (+alpha.value === 0) { alpha.value = 100; } commitColor(); });
 			alpha.addEventListener('input', commitColor);
-			return make('div', { class: 'field' }, make('label', {}, label), pick, make('span', { class: 'hex' }, c.hex.toUpperCase()), alpha, make('span', { class: 'unit' }, '%'));
+			return make('div', { class: 'field' }, make('label', {}, label), pick, make('span', { class: 'hex' }, bound ? 'variável' : c.hex.toUpperCase()), alpha, make('span', { class: 'unit' }, '%'), binding(obj, key, 'color'));
 		};
 		F.select = (label, obj, key, options, o = {}) => {
 			const sel = make('select', { onkeydown: stop }, ...options.map(([v, t]) => make('option', { value: v, selected: String(obj[key] ?? o.def) === String(v) }, t)));
@@ -241,11 +280,11 @@ window.DevStyle = (function () {
 	 * @param set  (obj, key, value) => void   grava + redesenha
 	 * @param refresh () => void               reconstrói o painel (ex.: ao adicionar uma sombra)
 	 */
-	function panel(n, set, refresh) {
-		const F = Fields(set);
+	function panel(n, set, refresh, context = {}) {
+		const F = Fields(set, context);
 		const out = [];
 		const setR = (o, k, v) => { set(o, k, v); refresh(); };
-		const FR = Fields(setR);
+		const FR = Fields(setR, context);
 
 		// ---- Aparência (todos, inclusive frames e imagens)
 		out.push(F.section('Aparência',
@@ -257,20 +296,6 @@ window.DevStyle = (function () {
 		if (n.type === 'line') {
 			out.push(F.section('Linha', F.row(F.color('Cor', n, 'stroke', { def: '#111111' })), F.row(F.num('Esp.', n, 'strokeWidth', { min: 1, unit: 'px' }))));
 		} else if (n.type !== 'group') {
-			// ---- Preenchimento (cor sólida, degradê linear/radial ou nenhum)
-			const fillType = n.fillType || 'solid';
-			const fillRows = [FR.row(FR.select('Tipo', n, 'fillType', [['solid', 'Cor sólida'], ['linear', 'Degradê linear'], ['radial', 'Degradê radial'], ['none', 'Nenhum']], { def: 'solid' }))];
-			if (fillType === 'solid') { fillRows.push(F.row(F.color('Cor', n, 'fill', { def: '#D9D9D9' }))); }
-			if (fillType === 'linear' || fillType === 'radial') {
-				n.gradient = n.gradient || { angle: 180, shape: 'circle', stops: [{ color: '#D10A0A', pos: 0 }, { color: '#111111', pos: 100 }] };
-				if (fillType === 'linear') { fillRows.push(F.row(F.num('Ângulo', n.gradient, 'angle', { unit: '°' }))); }
-				else { fillRows.push(F.row(F.select('Forma', n.gradient, 'shape', [['circle', 'Círculo'], ['ellipse', 'Elipse']]))); }
-				n.gradient.stops.forEach((s, i) => fillRows.push(make('div', { class: 'row stop' }, F.color(`${i + 1}`, s, 'color'), F.num('', s, 'pos', { min: 0, max: 100, unit: '%' }),
-					n.gradient.stops.length > 2 ? make('button', { class: 'btn mini', title: 'Remover cor', onclick: () => { n.gradient.stops.splice(i, 1); setR(n, 'gradient', n.gradient); } }, '✕') : null)));
-				fillRows.push(make('div', { class: 'btnrow' }, F.btn('+ Cor no degradê', () => { n.gradient.stops.push({ color: '#FFFFFF', pos: 50 }); n.gradient.stops.sort((a, b) => a.pos - b.pos); setR(n, 'gradient', n.gradient); })));
-			}
-			out.push(F.section(n.type === 'text' ? 'Fundo do texto' : 'Preenchimento', ...fillRows));
-
 			// ---- Borda
 			const perSide = !!n.borderSides;
 			out.push(F.section('Borda',
@@ -400,6 +425,14 @@ window.DevStyle = (function () {
 		node.style.left = '0px'; node.style.top = '0px'; node.style.position = 'relative';
 		// imagens viram data URL (o SVG não pode carregar recursos externos)
 		for (const img of node.querySelectorAll('img')) { try { img.src = await toDataUrl(img.src); } catch { /* ignora */ } }
+		for (const el of [node, ...node.querySelectorAll('*')]) {
+			const bg = el.style?.backgroundImage;
+			if (!bg || !bg.includes('url(')) { continue; }
+			const urls = [...bg.matchAll(/url\(["']?(.*?)["']?\)/g)].map(m => m[1]);
+			for (const url of urls) {
+				try { el.style.backgroundImage = el.style.backgroundImage.replace(url, await toDataUrl(url)); } catch { /* ignora */ }
+			}
+		}
 		const fontCss = await embedFonts(families);
 		const html = new XMLSerializer().serializeToString(node);
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject x="0" y="0" width="${w}" height="${h}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;position:relative;margin:0"><style>${fontCss.replace(/</g, '\\3c ')}</style>${html.replace(/^<div xmlns="http:\/\/www.w3.org\/1999\/xhtml"/, '<div')}</div></foreignObject></svg>`;
@@ -412,5 +445,5 @@ window.DevStyle = (function () {
 		return canvas.toDataURL('image/png');
 	}
 
-	return { apply, panel, ensureFont, exportElement, parseColor, toColor };
+	return { apply, panel, ensureFont, exportElement, parseColor, toColor, fillCss, filterCss, imageFilterCss };
 })();

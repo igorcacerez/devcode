@@ -113,3 +113,68 @@ html, body { margin: 0; height: 100%; overflow: hidden; font-family: var(--vscod
 .font-item:hover { background: var(--red-soft); }
 .font-item.on { background: var(--red-soft); outline: 1px solid var(--red); }
 .font-cat { font-family: var(--vscode-font-family, sans-serif); font-size: 10px; color: var(--muted); flex: none; }
+
+/* ---------- preenchimentos, variáveis e grades ---------- */
+.fill-card, .grid-card { margin: 0 10px 8px; padding: 6px 0 2px; border: 1px solid var(--border); border-radius: 7px; background: #00000004; }
+.fill-head, .grid-head { display: flex; align-items: center; gap: 4px; padding: 0 8px 6px 12px; }
+.fill-head strong, .grid-head strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.fill-head .btn, .grid-head .btn { flex: none; }
+.gradient-stop { display: grid; grid-template-columns: minmax(90px, 1fr) 64px 64px 28px; gap: 4px; padding: 0 12px 6px; }
+.gradient-stop .field { min-width: 0; }
+.color-text { width: 72px; }
+.image-adjustments { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; }
+.adjustment-row { display: grid; grid-template-columns: 86px 1fr 34px; align-items: center; gap: 6px; min-height: 25px; }
+.adjustment-row label { color: var(--muted); font-size: 11px; }
+.adjustment-row input { min-width: 0; accent-color: var(--red); }
+.grid-head { padding-top: 2px; }
+.grid-card .field input[type=range] { accent-color: var(--red); }
+.layout-grid-overlay { position: absolute; z-index: 4; pointer-events: none; overflow: hidden; }
+.layout-grid-overlay svg { display: block; overflow: hidden; pointer-events: none; }
+
+/* ---------- vínculos de variáveis ---------- */
+.binding-tools { display: inline-flex; align-items: center; gap: 3px; flex: none; min-width: 0; }
+.binding-chip { display: inline-block; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sel); font-size: 10px; }
+.bind-btn { width: 19px; height: 19px; flex: none; border: 0; border-radius: 4px; padding: 0; background: transparent; color: var(--sel); cursor: pointer; }
+.bind-btn:hover { background: #0D99FF18; }
+.field input:disabled { opacity: .65; }
+.variable-pop { position: fixed; z-index: 1100; display: flex; flex-direction: column; min-width: 220px; max-width: 300px; max-height: 250px; overflow: auto; padding: 4px; background: var(--vscode-editorWidget-background, #fff); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 8px 28px #0003; }
+.variable-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.variable-option:hover { background: var(--red-soft); }
+.variable-option.create { border-top: 1px solid var(--border); color: var(--sel); }
+.variable-swatch { width: 14px; height: 14px; flex: none; border: 1px solid #0003; border-radius: 3px; }
+.variable-css-hint { margin-left: auto; color: var(--muted); font: 10px var(--vscode-editor-font-family, monospace); }
+.modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: #0006; }
+.modal { display: flex; flex-direction: column; max-width: 95vw; max-height: 88vh; overflow: hidden; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--vscode-editorWidget-background, #fff); box-shadow: 0 12px 36px #0004; }
+.modal-title { padding: 0 0 12px; font-size: 14px; font-weight: 700; }
+.modal p { margin: 2px 0 16px; line-height: 1.5; }
+.modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-top: 12px; }
+.variable-list { overflow: auto; }
+.variable-group-title { padding: 9px 2px 5px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.variable-row { display: grid; grid-template-columns: minmax(100px, 1fr) 88px minmax(75px, auto) 28px; align-items: center; gap: 6px; margin-bottom: 5px; }
+.variable-row input:not([type=color]) { min-width: 0; width: 100%; padding: 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--vscode-input-background, #fff); color: inherit; font: inherit; }
+.variable-row input[type=color] { width: 32px; height: 26px; padding: 0; border: 0; background: transparent; }
+.css-preview { min-height: 200px; resize: vertical; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--vscode-input-background, #fff); color: inherit; font: 12px var(--vscode-editor-font-family, monospace); user-select: text; }
+
+/* ---------- recorte de imagem ---------- */
+.crop-ui { position: absolute; inset: 0; pointer-events: none; }
+.crop-full-image { position: absolute; max-width: none; max-height: none; opacity: .48; pointer-events: none; }
+.crop-image-rect { position: absolute; z-index: 2; border: 1px dashed #fff; box-shadow: 0 0 0 1px #0009; pointer-events: none; }
+.crop-image-hit { position: absolute; inset: 0; z-index: 1; pointer-events: auto; cursor: move; }
+.crop-window { position: absolute; z-index: 3; border: 2px solid var(--sel); box-shadow: 0 0 0 1px #fff; pointer-events: none; }
+.crop-handle { position: absolute; width: 10px; height: 10px; transform: translate(-50%, -50%); border: 1px solid #0879c8; border-radius: 2px; background: #fff; pointer-events: auto; }
+.image-handle { z-index: 3; width: 9px; height: 9px; border-color: #333; background: #fff; }
+.window-handle { z-index: 4; }
+.crop-handle[data-crop-image-handle=nw], .crop-handle[data-crop-window-handle=nw] { cursor: nwse-resize; }
+.crop-handle[data-crop-image-handle=ne], .crop-handle[data-crop-window-handle=ne] { cursor: nesw-resize; }
+.crop-handle[data-crop-image-handle=se], .crop-handle[data-crop-window-handle=se] { cursor: nwse-resize; }
+.crop-handle[data-crop-image-handle=sw], .crop-handle[data-crop-window-handle=sw] { cursor: nesw-resize; }
+.crop-handle[data-crop-window-handle=n], .crop-handle[data-crop-window-handle=s] { cursor: ns-resize; }
+.crop-handle[data-crop-window-handle=e], .crop-handle[data-crop-window-handle=w] { cursor: ew-resize; }
+.crop-label { position: absolute; padding: 5px 8px; border-radius: 4px; background: #222d; color: #fff; font-size: 11px; white-space: nowrap; }
+.fill-card .field label { min-width: 0; }
+.gradient-stop { grid-template-columns: minmax(0, 1fr) 66px 56px 22px; gap: 3px; padding: 0 8px 6px; }
+.gradient-stop .field { padding: 0 4px; gap: 2px; }
+.gradient-stop .color-text { min-width: 44px; }
+.gradient-stop .color-text, .fill-card .color-text { width: auto; flex: 1; min-width: 0; }
+.fill-card .row { padding: 0 8px 6px; }
+.grid-card .row { padding: 0 8px 6px; } .grid-card .field label { min-width: 0; }

@@ -136,7 +136,7 @@ class PrototypeEditorProvider {
 					if (!files?.length) { break; }
 					lastPickDir = vscode.Uri.file(path.dirname(files[0].fsPath));
 					const items = importImages(files.map(f => ({ path: f.fsPath })));
-					if (items.length) { panel.webview.postMessage({ type: 'imagesAdded', items, replace: msg.replace }); }
+					if (items.length) { panel.webview.postMessage({ type: 'imagesAdded', items, replace: msg.replace, fillId: msg.fillId }); }
 					break;
 				}
 				case 'saveImages': {
