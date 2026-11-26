@@ -37,6 +37,12 @@
         "icon": "$(play)"
       },
       {
+        "command": "devcode.runInBrowser",
+        "title": "Executar no navegador do computador",
+        "category": "DEV CODE",
+        "icon": "$(globe)"
+      },
+      {
         "command": "devcode.quarantine.show",
         "title": "Ver arquivos em quarentena",
         "category": "DEV CODE"
@@ -242,6 +248,11 @@
           "command": "devcode.run",
           "group": "navigation@0",
           "when": "editorLangId != sql && activeCustomEditorId != devcode.prototype"
+        },
+        {
+          "command": "devcode.runInBrowser",
+          "group": "navigation@1",
+          "when": "editorLangId =~ /^(html|css|javascript|javascriptreact|typescript|typescriptreact)$/"
         }
       ],
       "editor/title": [

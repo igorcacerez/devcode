@@ -120,6 +120,7 @@ const HTML_FILES = {
 };
 
 async function openProject(dir) {
+	require('./gitignore').ensureGitignore(dir);
 	trustFolder(extContext, dir); // só pastas criadas pelo DEV CODE podem ser abertas
 	await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(dir), { forceNewWindow: !!vscode.workspace.workspaceFolders?.length });
 }

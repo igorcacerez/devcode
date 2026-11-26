@@ -51,7 +51,7 @@ function isWebProject(doc) {
 	return fs.existsSync(path.join(folder.uri.fsPath, 'index.html'));
 }
 
-async function startLiveServer() {
+async function startLiveServer(external = false) {
 	const doc = vscode.window.activeTextEditor?.document;
 	if (!doc || !WEB_LANGS.has(doc.languageId)) {
 		vscode.window.showInformationMessage('DEV CODE: abra um arquivo .html, .css ou .js do projeto para iniciar o Live Server.');
@@ -62,7 +62,7 @@ async function startLiveServer() {
 	}
 	await vscode.workspace.saveAll(false);
 	const root = vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath || path.dirname(doc.fileName);
-	await liveServer.start(root, doc.languageId === 'html' ? doc.fileName : undefined);
+	await liveServer.start(root, doc.languageId === 'html' ? doc.fileName : undefined, external);
 }
 
 /** uri -> hash do conteúdo aprovado */
@@ -188,7 +188,7 @@ function runCommandFor(doc) {
 }
 
 /** React (Vite) / Expo: pergunta sobre o arquivo aberto → servidor de desenvolvimento. */
-async function runDevServer(doc, dev) {
+async function runDevServer(doc, dev, external = false) {
 	if (!(await quiz(doc))) {
 		return;
 	}
@@ -211,14 +211,14 @@ async function runDevServer(doc, dev) {
 		vscode.window.showInformationMessage('DEV CODE: o app vai abrir no emulador Android (na primeira vez o Expo instala o Expo Go nele). Para recarregar, salve o arquivo.');
 	} else if (dev.url) {
 		// abre a pré-visualização ao lado quando o Vite subir (recarrega sozinho a cada salvamento)
-		setTimeout(() => vscode.commands.executeCommand('simpleBrowser.api.open', vscode.Uri.parse(dev.url), { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true })
+		setTimeout(() => external ? vscode.env.openExternal(vscode.Uri.parse(dev.url)) : vscode.commands.executeCommand('simpleBrowser.api.open', vscode.Uri.parse(dev.url), { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true })
 			.then(undefined, () => vscode.env.openExternal(vscode.Uri.parse(dev.url))), 3500);
 	} else {
 		vscode.window.showInformationMessage('DEV CODE: abra o app Expo Go no celular e leia o QR Code que aparece no terminal.');
 	}
 }
 
-async function runActive() {
+async function runActive(external = false) {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor) {
 		vscode.window.showInformationMessage('DEV CODE: abra um arquivo de código para executar.');
@@ -227,10 +227,10 @@ async function runActive() {
 	const doc = editor.document;
 	const dev = DEV_COMMANDS[projectTypeOf(doc)];
 	if (dev) {
-		return runDevServer(doc, dev);
+		return runDevServer(doc, dev, external);
 	}
 	if (isWebProject(doc)) {
-		return startLiveServer();
+		return startLiveServer(external);
 	}
 	if (doc.isUntitled) {
 		vscode.window.showWarningMessage('DEV CODE: salve o arquivo antes de executar.');
@@ -276,7 +276,7 @@ function activate(context) {
 	});
 	context.subscriptions.push(lineDecoration);
 
-	context.subscriptions.push(vscode.commands.registerCommand('devcode.run', runActive));
+	context.subscriptions.push(vscode.commands.registerCommand('devcode.run', () => runActive(false)), vscode.commands.registerCommand('devcode.runInBrowser', () => runActive(true)));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newProject', newProject));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newPythonProject', () => newPythonProject()));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.newColabProject', () => require('./project').newColabProject()));
@@ -309,7 +309,7 @@ function activate(context) {
 	}
 	liveServer = new LiveServer();
 	context.subscriptions.push(liveServer);
-	context.subscriptions.push(vscode.commands.registerCommand('devcode.liveServer.start', startLiveServer));
+	context.subscriptions.push(vscode.commands.registerCommand('devcode.liveServer.start', () => startLiveServer(false)));
 	context.subscriptions.push(vscode.commands.registerCommand('devcode.liveServer.stop', () => liveServer.stop()));
 	openMainIfEmpty();
 

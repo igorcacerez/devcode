@@ -235,10 +235,8 @@ async function connectRemote() {
 	if (!url) { return; }
 	if (!fs.existsSync(path.join(folder, '.git'))) {
 		await run(folder, ['init', '-b', 'main']);
-		if (!fs.existsSync(path.join(folder, '.gitignore'))) {
-			fs.writeFileSync(path.join(folder, '.gitignore'), '.venv/\n__pycache__/\nnode_modules/\n');
-		}
 	}
+	require('./gitignore').ensureGitignore(folder);
 	await authorship.installHooks(folder, extensionPath);
 	await run(folder, ['remote', 'remove', 'origin']);
 	await run(folder, ['remote', 'add', 'origin', url.trim()]);

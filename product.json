@@ -250,6 +250,6 @@
 	],
 	"sessionsWindowAllowedExtensions": [],
 	"voiceWsUrl": "wss://falcon-caas.mai.microsoft.com/voice-code/api/v1/realtime/voice",
-	"devcodeVersion": "1.7.0",
+	"devcodeVersion": "1.7.1",
 	"devcodeRepo": "igorcacerez/devcode"
 }

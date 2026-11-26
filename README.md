@@ -59,7 +59,7 @@ Ao abrir a IDE aparece a **Tela Inicial**, com os projetos organizados por categ
 | 🐍 **Python** | Cria a pasta com **ambiente virtual (`.venv`)**, estilo PyCharm. O aluno escolhe qual Python usar. |
 | 📓 **Colab (notebook Python)** | Notebook igual ao **Google Colab**: células de código, resultado embaixo, `input()` dentro da célula, variáveis entre células. Ideal para **aulas de lógica**. |
 | 🎨 **Protótipo (telas)** | Editor visual estilo **Figma**, simplificado e **sem IA**: frames **Mobile** e **Desktop**, retângulos, elipses, linhas, textos e imagens, **camadas** e **estilos** (cores, bordas, cantos, sombra, tipografia). Exporta cada tela em PNG. |
-| 🌐 **HTML, CSS e JavaScript** | Site com **Live Server** embutido: a página recarrega sozinha ao salvar. |
+| 🌐 **HTML, CSS e JavaScript** | Site com **Live Server** embutido: a página recarrega sozinha ao salvar. No menu do ▶ há também **Executar no navegador do computador** (Chrome, Edge…). |
 | ⚛️ **React** | Vite + React, mínimo, **sem TypeScript**. |
 | 📱 **React Native (Expo)** | Template *blank*, **sem TypeScript**. Roda no **emulador Android integrado** (instalação única) ou no celular pelo **Expo Go**. |
 | 🧪 **Teste de Software** | Testes automatizados de sites **estilo Selenium**, 100% visuais: gravar ações, verificações, suítes e **relatório** de sucessos e erros. |
@@ -206,6 +206,10 @@ Para impedir que o aluno escreva o código fora (com IA, pelo site do GitHub ou 
 
 ### Interface
 Em **português do Brasil**, com o menu reduzido a **Arquivo** e **Terminal**, a barra lateral só com **Explorador**, **Pesquisa** e **Banco de Dados**, ícones **Material Icon Theme** e autocomplete de Python (**basedpyright**), JavaScript, HTML e CSS.
+
+### .gitignore automático
+Todo projeto criado pelo DEV CODE (e todo projeto conectado ao GitHub) já vem com um `.gitignore` pronto: ignora `.devcode/`, `.venv/`, `__pycache__/`, `node_modules/`, `dist/`, `.env` e arquivos do sistema. Se o projeto já tiver um `.gitignore`, o DEV CODE só acrescenta as linhas que faltam.
+
 
 ## Instalação
 

@@ -47,7 +47,7 @@ class LiveServer {
 		}
 	}
 
-	async start(root, openFile) {
+	async start(root, openFile, external = false) {
 		if (this.running && this.root !== root) { this.stop(); }
 		if (!this.running) {
 			this.root = root;
@@ -62,12 +62,12 @@ class LiveServer {
 		}
 		const rel = openFile ? path.relative(root, openFile).split(path.sep).join('/') : '';
 		const url = `http://127.0.0.1:${this.port}/${rel.endsWith('.html') || rel.endsWith('.htm') ? rel : ''}`;
-		await this.open(url);
+		await this.open(url, external);
 	}
 
-	async open(url) {
+	async open(url, external = false) {
 		const where = vscode.workspace.getConfiguration('devcode').get('liveServer.browser', 'interno');
-		if (where === 'externo') {
+		if (external || where === 'externo') {
 			await vscode.env.openExternal(vscode.Uri.parse(url));
 		} else {
 			// navegador embutido do VS Code (extensão simple-browser), ao lado do código
