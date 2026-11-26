@@ -49,6 +49,7 @@ class DiagramEditorProvider {
 					edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), text);
 					applyingOwnEdit = true;
 					try { await vscode.workspace.applyEdit(edit); } finally { applyingOwnEdit = false; }
+					require('./autoSave').scheduleAutoSave(document);
 					break;
 				}
 				case 'export': {

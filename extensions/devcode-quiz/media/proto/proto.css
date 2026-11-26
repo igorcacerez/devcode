@@ -178,3 +178,75 @@ html, body { margin: 0; height: 100%; overflow: hidden; font-family: var(--vscod
 .gradient-stop .color-text, .fill-card .color-text { width: auto; flex: 1; min-width: 0; }
 .fill-card .row { padding: 0 8px 6px; }
 .grid-card .row { padding: 0 8px 6px; } .grid-card .field label { min-width: 0; }
+.svg-colors { margin: 0 0 6px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.svg-colors-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 11px; }
+.svg-color-row { display: grid; grid-template-columns: 18px 14px minmax(0, 1fr); align-items: center; gap: 6px; margin-bottom: 4px; }
+.svg-orig { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #0003; }
+.svg-arrow { color: var(--muted); text-align: center; }
+.hint-line { padding: 0 12px 6px; color: var(--muted); font-size: 11px; }
+
+/* ================================================================== polimento visual (1.8.1) */
+:root { --ctl-h: 28px; --radius: 6px; --gap: 6px; --pad-x: 12px; }
+#app { grid-template-columns: 240px 1fr 300px; }
+.panel.right { scrollbar-width: thin; }
+
+/* seções */
+.section { padding: 2px 0 10px; }
+.panel h3 { padding: 14px var(--pad-x) 8px; font-size: 10.5px; letter-spacing: .08em; }
+
+/* linhas e campos: mesma altura, mesmo raio, alinhados à grade */
+.row { gap: var(--gap); padding: 0 var(--pad-x) var(--gap); align-items: center; }
+.field { height: var(--ctl-h); border-radius: var(--radius); padding: 0 8px; gap: 6px; transition: border-color .12s; }
+.field:hover { border-color: #0000002a; }
+.field:focus-within { border-color: var(--sel); box-shadow: 0 0 0 2px #0D99FF22; }
+.field label { flex: none; font-size: 11px; white-space: nowrap; }
+.field input, .field select { height: 100%; font-size: 12px; }
+.field select { cursor: pointer; padding-right: 2px; }
+.field input[type=number] { -moz-appearance: textfield; text-align: left; }
+.field input[type=number]::-webkit-inner-spin-button, .field input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.field input[type=color] { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #0002; }
+.field input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+.field input[type=color]::-webkit-color-swatch { border: 0; border-radius: 3px; }
+.field .unit { font-size: 10.5px; }
+.field.tall { padding: 4px 8px; }
+
+/* botões */
+.btnrow { gap: var(--gap); padding: 0 var(--pad-x) 8px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: var(--ctl-h); padding: 0 11px; border-radius: var(--radius); font-size: 12px; line-height: 1; white-space: nowrap; transition: border-color .12s, background .12s; }
+.btn:hover { border-color: #0000003a; background: #00000006; }
+.btn:active { transform: translateY(.5px); }
+.btn.primary:hover { background: #B80808; border-color: #B80808; }
+.btn.mini { height: 22px; min-width: 22px; padding: 0 6px; font-size: 11px; }
+.btn:disabled { opacity: .45; cursor: default; }
+.check { padding: 2px var(--pad-x) 8px; }
+.check input { accent-color: var(--red); }
+
+/* vínculo de variável: aparece ao passar o mouse (menos poluição) */
+.bind-btn { opacity: 0; transition: opacity .12s; }
+.field:hover .bind-btn, .field:focus-within .bind-btn, .binding-chip + .bind-btn { opacity: 1; }
+
+/* cartões (preenchimentos, grades, sombras) */
+.fill-card, .grid-card, .shadow-box { margin: 0 var(--pad-x) 8px; padding: 8px 0 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--vscode-editor-background, #fff); }
+.fill-card .row, .grid-card .row, .shadow-box .row, .fill-card .btnrow, .grid-card .btnrow { padding-left: 8px; padding-right: 8px; }
+.fill-head, .grid-head { padding: 0 8px 8px 10px; gap: 2px; }
+.fill-head strong, .grid-head strong { font-size: 11.5px; font-weight: 600; }
+.fill-head .btn, .grid-head .btn { height: 22px; width: 22px; padding: 0; border-color: transparent; background: transparent; color: var(--muted); }
+.fill-head .btn:hover, .grid-head .btn:hover { border-color: var(--border); color: var(--fg); }
+.fill-card .btnrow .btn { flex: 1 1 auto; }
+.gradient-stop { padding: 0 8px 6px; }
+
+/* ajustes da imagem e cores do SVG */
+.image-adjustments, .svg-colors { padding: 8px 10px; border-radius: 7px; background: #00000005; border: 1px solid var(--border); }
+.image-adjustments strong, .svg-colors-head strong { display: block; font-size: 11px; margin-bottom: 4px; }
+.adjustment-row { grid-template-columns: 80px 1fr 30px; min-height: 24px; }
+.adjustment-row span { text-align: right; font-variant-numeric: tabular-nums; }
+.svg-colors { margin: 0 8px 8px; }
+input[type=range] { accent-color: var(--red); height: 4px; }
+
+/* camadas */
+.layer { height: 30px; border-radius: 6px; }
+.layer.selected { background: var(--red-soft); box-shadow: inset 2px 0 0 var(--red); }
+
+/* barra de ferramentas */
+.tool { height: 30px; border-radius: 7px; }
+.tool:focus-visible, .btn:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }

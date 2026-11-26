@@ -57,7 +57,7 @@
 		if (n.type === 'image') {
 			const fills = [{ id: `legacy-image-${n.id}`, type: 'image', opacity: 1, visible: true, blend: '', image: { src: n.src, mode: n.fit === 'fill' ? 'stretch' : (n.fit || 'cover'), position: n.imagePosition || 'center', transform: n.imageTransform || null, adjustments: n.imageAdjustments || {} } }];
 			const backgroundType = n.fillType || 'solid';
-			if (backgroundType !== 'none') { fills.push({ id: `legacy-fill-${n.id}`, type: backgroundType, color: n.fill ?? 'transparent', opacity: 1, visible: true, blend: '', gradient: n.gradient ? clone(n.gradient) : undefined }); }
+			if (backgroundType !== 'none' && !(backgroundType === 'solid' && (n.fill ?? 'transparent') === 'transparent')) { fills.push({ id: `legacy-fill-${n.id}`, type: backgroundType, color: n.fill ?? 'transparent', opacity: 1, visible: true, blend: '', gradient: n.gradient ? clone(n.gradient) : undefined }); }
 			return fills;
 		}
 		const type = n.fillType || 'solid';
@@ -78,6 +78,59 @@
 		if (fill.type === 'conic') { return `conic-gradient(from ${resolveNum(g.angle, 0)}deg, ${stops})`; }
 		return `linear-gradient(${resolveNum(g.angle, 180)}deg, ${stops})`;
 	}
+	// ---- SVG: trocar as cores (o arquivo continua igual; a troca fica no protótipo)
+	const svgTexts = {};
+	const svgLoading = new Set();
+	const isSvg = src => /\.svg$/i.test(src || '');
+	function loadSvg(src) {
+		if (!isSvg(src) || svgTexts[src] !== undefined || svgLoading.has(src) || !images[src]) { return; }
+		svgLoading.add(src);
+		fetch(images[src]).then(r => r.text()).then(text => { svgTexts[src] = text; }).catch(() => { svgTexts[src] = ''; }).finally(() => { svgLoading.delete(src); render(); });
+	}
+	const NAMED = { black: '#000000', white: '#FFFFFF', red: '#FF0000', blue: '#0000FF', green: '#008000', gray: '#808080', grey: '#808080', yellow: '#FFFF00', orange: '#FFA500' };
+	function normHex(c) {
+		c = String(c).trim().toLowerCase();
+		if (NAMED[c]) { return NAMED[c]; }
+		const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c);
+		if (!m) { return null; }
+		const h6 = m[1].length === 3 ? m[1].split('').map(x => x + x).join('') : m[1];
+		return '#' + h6.toUpperCase();
+	}
+	const COLOR_RE = /(fill|stroke|stop-color|color)\s*(=\s*["']|:\s*)(#[0-9a-fA-F]{3,6}\b|[a-zA-Z]+)/g;
+	/** Cores usadas no SVG; '__padrao' = preenchimento padrão (preto) dos desenhos sem cor. */
+	function svgColors(src) {
+		const text = svgTexts[src];
+		if (!text) { return []; }
+		const found = new Set();
+		for (const m of text.matchAll(COLOR_RE)) { const hex = normHex(m[3]); if (hex) { found.add(hex); } }
+		const rootFill = /<svg[^>]*\sfill\s*=/.test(text);
+		if (!rootFill) { found.add('__padrao'); }
+		return [...found];
+	}
+	function recolorSvg(text, map) {
+		let out = text.replace(COLOR_RE, (all, prop, sep, value) => {
+			const hex = normHex(value);
+			const to = hex && map[hex] ? resolveColor(map[hex], hex) : null;
+			return to ? `${prop}${sep}${to}` : all;
+		});
+		if (map.__padrao) { out = out.replace(/<svg\b/, `<svg fill="${resolveColor(map.__padrao, '#000000')}"`); }
+		return out;
+	}
+	const recolorCache = new Map();
+	/** URI da imagem para desenhar: SVG com cores trocadas vira data: URL. */
+	function imageUri(src, image) {
+		const uri = images[src];
+		if (!uri || !isSvg(src)) { return uri; }
+		loadSvg(src);
+		const map = image?.svgColors;
+		if (!map || !Object.keys(map).length || !svgTexts[src]) { return uri; }
+		const key = src + JSON.stringify(map) + JSON.stringify(model.variables || {});
+		if (!recolorCache.has(key)) {
+			if (recolorCache.size > 200) { recolorCache.clear(); }
+			recolorCache.set(key, 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(recolorSvg(svgTexts[src], map)));
+		}
+		return recolorCache.get(key);
+	}
 	function fillImageTransform(n, fill) { return fill.image?.transform || (n.type === 'image' ? n.imageTransform : null); }
 	function appendFillLayers(el, n) {
 		const fills = getFills(n);
@@ -89,7 +142,7 @@
 			if (fill.type === 'image') {
 				const image = fill.image || {};
 				const src = image.src || (n.type === 'image' ? n.src : '');
-				const uri = images[src];
+				const uri = imageUri(src, image);
 				if (!uri) { layer.style.backgroundColor = '#ddd'; }
 				else if (image.mode === 'tile') {
 					const scale = Math.max(1, resolveNum(image.scale, 100));
@@ -790,6 +843,25 @@
 		actual.id = actual.id || uid(); actual.type = 'image'; actual.image = actual.image || { src: '', mode: 'cover', scale: 100, transform: null, adjustments: {} };
 		vscode.postMessage({ type: 'pickImage', replace: n.id, fillId: actual.id });
 	}
+	function svgColorEditor(n, key, index, image) {
+		const src = image.src || (n.type === 'image' ? n.src : '');
+		if (!isSvg(src)) { return null; }
+		loadSvg(src);
+		const colors = svgColors(src);
+		if (!colors.length) { return h('div', { class: 'hint-line' }, svgTexts[src] === undefined ? 'Lendo as cores do SVG…' : 'Este SVG não tem cores editáveis.'); }
+		const map = image.svgColors || {};
+		return h('div', { class: 'svg-colors' },
+			h('div', { class: 'svg-colors-head' }, h('strong', {}, 'Cores do SVG'), Object.keys(map).length ? h('button', { class: 'btn mini', onclick: () => updateFill(n, key, index, f => { delete f.image.svgColors; }) }, 'Restaurar') : null),
+			...colors.map(orig => {
+				const holder = { c: map[orig] ?? (orig === '__padrao' ? '#000000' : orig) };
+				return h('div', { class: 'svg-color-row' },
+					h('span', { class: 'svg-orig', title: orig === '__padrao' ? 'Cor padrão (partes sem cor definida)' : `Cor original ${orig}`, style: { background: orig === '__padrao' ? '#000000' : orig } }),
+					h('span', { class: 'svg-arrow' }, '→'),
+					customColor(orig === '__padrao' ? 'Padrão' : '', holder, 'c', orig === '__padrao' ? '#000000' : orig,
+						v => updateFill(n, key, index, f => { f.image.svgColors = { ...(f.image.svgColors || {}), [orig]: v }; }),
+						anchor => { const f = fillAt(n, key, index); f.image.svgColors = f.image.svgColors || {}; if (f.image.svgColors[orig] === undefined) { f.image.svgColors[orig] = orig === '__padrao' ? '#000000' : orig; } bindField(f.image.svgColors, orig, 'color', anchor); }));
+			}));
+	}
 	function customNum(label, obj, key, options = {}) {
 		const bound = !!obj[key]?.var;
 		const value = resolveNum(obj[key], options.def ?? 0);
@@ -858,7 +930,7 @@
 		const target = cropTarget(); if (!target || !stage) { cropMode = null; return; }
 		const { node: n, fill } = target;
 		const transform = fillImageTransform(n, fill) || { x: 0, y: 0, w: n.w, h: n.h };
-		const src = images[fill.image?.src || ''];
+		const src = imageUri(fill.image?.src || '', fill.image);
 		if (!src) { return; }
 		const p = toScreen(n.x, n.y), ip = toScreen(n.x + transform.x, n.y + transform.y);
 		const W = n.w * view.zoom, H = n.h * view.zoom, iW = transform.w * view.zoom, iH = transform.h * view.zoom;
@@ -928,6 +1000,7 @@
 						h('button', { class: 'btn', onclick: () => updateFill(n, key, index, f => { f.image.rotation = ((resolveNum(f.image.rotation) + 90) % 360); }) }, '↻ Girar 90°'),
 						h('button', { class: 'btn', onclick: () => addImageOverlay(n, key, index, false) }, '+ Sobreposição (overlay)'),
 						h('button', { class: 'btn', onclick: () => addImageOverlay(n, key, index, true) }, '+ Degradê por cima')),
+						svgColorEditor(n, key, index, image),
 						h('div', { class: 'row one' }, h('div', { class: 'image-adjustments' },
 							h('strong', {}, 'Ajustes da imagem'),
 						...[["exposure", "Exposição", -1, 1, 0.05], ["contrast", "Contraste", 0, 200, 1], ["saturation", "Saturação", 0, 200, 1], ["temperature", "Temperatura", -100, 100, 1], ["tint", "Matiz / tint", -180, 180, 1], ["highlights", "Realces", -100, 100, 1], ["shadows", "Sombras", -100, 100, 1]].map(([prop, label, min, max, step]) => {

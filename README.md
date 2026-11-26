@@ -112,7 +112,7 @@ O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo*
   - **CSS personalizado:** campo para qualquer outra propriedade CSS (ex.: `clip-path`, `border-image`).
 - A **exportação PNG** é feita a partir do próprio HTML/CSS, com as fontes do Google embutidas, e fica idêntica à tela.
 - **Desfazer/refazer** (`Ctrl+Z`/`Ctrl+Y`), duplicar (`Ctrl+D`), alinhar várias camadas, zoom (`Ctrl`+roda) e mover a tela (`Espaço`+arrastar).
-- **Imagens como no Figma:** imagem pode ser preenchimento de qualquer forma (Preencher, Caber, Cortar, Lado a lado). **Cortar (crop):** clique duplo na imagem ou `Enter` — arraste a imagem, redimensione pelos cantos e ajuste a janela do recorte. Ajustes de exposição, contraste, saturação, temperatura, matiz, realces e sombras, e girar 90°.
+- **Imagens como no Figma:** imagem pode ser preenchimento de qualquer forma (Preencher, Caber, Cortar, Lado a lado). **Cortar (crop):** clique duplo na imagem ou `Enter` — arraste a imagem, redimensione pelos cantos e ajuste a janela do recorte. Ajustes de exposição, contraste, saturação, temperatura, matiz, realces e sombras, e girar 90°. **SVG:** ao usar um ícone ou logo SVG, o painel mostra **Cores do SVG** — troque cada cor (ou vincule a uma variável) sem editar o arquivo.
 - **Vários preenchimentos (pilha, igual ao Figma):** cor sólida, degradê linear/radial/cônico e imagem, cada um com opacidade, mesclagem e olho para esconder. Botões rápidos **+ Sobreposição (overlay)** e **+ Degradê por cima** sobre fotos.
 - **Variáveis (como o `:root` do CSS):** botão **◆ Variáveis** cria cores e números (ex.: `cor/primaria`). Clique no ◆ ao lado de um campo para vincular; mudou a variável, muda em todos os elementos. **Ver como CSS** mostra o `:root { --cor-primaria: … }` equivalente.
 - **Grades de layout:** nos frames, adicione grades de colunas, linhas ou quadriculado (modelos: 12 colunas, 4 colunas mobile, grade 8px). Mostrar/esconder com **▦ Grades** ou `Ctrl+Shift+4`; os elementos encaixam nas colunas ao mover (segure `Alt` para não encaixar). As grades não saem no PNG.
@@ -198,7 +198,7 @@ O ícone do GitHub na barra lateral abre um painel com tudo o que o aluno precis
 ### Código vindo do GitHub: assinatura e quarentena
 Para impedir que o aluno escreva o código fora (com IA, pelo site do GitHub ou em outro editor) e traga para a IDE com um **pull** ou **clone**:
 - **Assinatura:** todo commit feito no DEV CODE (painel GitHub, botão Enviar ou aba Source Control) recebe uma assinatura `DevCode-Assinatura` calculada sobre as alterações. Copiar a assinatura para outro commit não funciona.
-- **Quarentena:** no pull ou clone, arquivos que vieram de commits sem assinatura não entram no projeto. Ficam em **Quarentena** (ícone 🛡 na barra de status): o aluno pode ver o conteúdo, somente leitura, mas precisa digitar de novo.
+- **Quarentena:** no pull ou clone, arquivos que vieram de commits sem assinatura não entram no projeto. Ficam em **Quarentena** (ícone 🛡 na barra de status): o aluno pode ver o conteúdo, somente leitura, mas precisa digitar de novo. Clicando no 🛡 abre o **painel da Quarentena**: ver cada arquivo, marcar vários, **Liberar todos** (a senha do professor é pedida uma vez só) ou **Limpar quarentena** apagando tudo.
 - **Liberação pelo professor:** o comando **Liberar arquivos da quarentena (professor)** pede a **senha de administrador do Windows** (tela do UAC). Também dá para **confiar em um repositório**, como os exemplos do professor, e aí os pulls dele entram direto.
 - **Relatório de autoria:** o comando **Relatório de autoria do código** mostra, por arquivo, quanto foi digitado na IDE, quanto veio do GitHub assinado, quanto foi para a quarentena e quanto o professor liberou.
 
@@ -210,6 +210,9 @@ Para impedir que o aluno escreva o código fora (com IA, pelo site do GitHub ou 
 
 ### Interface
 Em **português do Brasil**, com o menu reduzido a **Arquivo** e **Terminal**, a barra lateral só com **Explorador**, **Pesquisa** e **Banco de Dados**, ícones **Material Icon Theme** e autocomplete de Python (**basedpyright**), JavaScript, HTML e CSS.
+
+### Salvamento automático
+O DEV CODE salva sozinho (1 segundo depois de parar de digitar), inclusive no **Protótipo** e nos **Diagramas**.
 
 ### .gitignore automático
 Todo projeto criado pelo DEV CODE (e todo projeto conectado ao GitHub) já vem com um `.gitignore` pronto: ignora `.devcode/`, `.venv/`, `__pycache__/`, `node_modules/`, `dist/`, `.env` e arquivos do sistema. Se o projeto já tiver um `.gitignore`, o DEV CODE só acrescenta as linhas que faltam.

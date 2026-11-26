@@ -124,6 +124,7 @@ class PrototypeEditorProvider {
 					edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), text);
 					applyingOwnEdit = true;
 					await vscode.workspace.applyEdit(edit);
+					require('./autoSave').scheduleAutoSave(document);
 					applyingOwnEdit = false;
 					break;
 				}

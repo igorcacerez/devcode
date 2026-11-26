@@ -76,43 +76,140 @@ function pickerItem(entry) {
 	};
 }
 
-async function showQuarantine(context) {
-	const entries = allEntries(context);
-	if (!entries.length) {
-		vscode.window.showInformationMessage('Não há arquivos na quarentena.');
-		return;
+let quarantinePanel;
+
+function escapeHtml(value) {
+	return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c]));
+}
+
+function panelHtml(entries) {
+	const nonce = crypto.randomBytes(16).toString('hex');
+	const groups = new Map();
+	for (const entry of entries) {
+		if (!groups.has(entry.root)) { groups.set(entry.root, []); }
+		groups.get(entry.root).push(entry);
 	}
-	const picker = vscode.window.createQuickPick();
-	picker.title = 'Arquivos em quarentena';
-	picker.placeholder = 'Selecione um arquivo para abrir (somente leitura)';
-	picker.ignoreFocusOut = true;
-	picker.matchOnDescription = true;
-	picker.items = entries.map(pickerItem);
-	picker.onDidAccept(() => {
-		const item = picker.selectedItems[0];
-		picker.hide();
-		if (item) { openEntry(item.entry).catch(err => vscode.window.showErrorMessage(`DEV CODE: ${err.message || err}`)); }
+	const rows = [...groups.entries()].map(([root, list]) => `
+		<section class="repo">
+			<header><label><input type="checkbox" class="all-repo"> <span class="repo-name">📁 ${escapeHtml(path.basename(root))}</span></label>
+			<span class="muted">${list.length} arquivo(s) · ${escapeHtml(root)}</span>
+			<button class="ghost" data-act="trust" data-root="${escapeHtml(root)}" title="Libera todos os próximos pulls deste repositório (pede a senha do administrador)">🛡 Confiar neste repositório</button></header>
+			${list.map(entry => `
+			<div class="item">
+				<input type="checkbox" class="pick" data-key="${entry.key}">
+				<div class="info" data-act="open" data-key="${entry.key}">
+					<div class="file">${escapeHtml(entry.rel)}</div>
+					<div class="muted">${escapeHtml(describe(entry))}${entry.reason ? ` · ${escapeHtml(entry.reason)}` : ''}</div>
+				</div>
+				<button class="ghost" data-act="open" data-key="${entry.key}" title="Ver o conteúdo (somente leitura)">👁 Ver</button>
+				<button class="ghost ok" data-act="release" data-key="${entry.key}">✔ Liberar</button>
+				<button class="ghost danger" data-act="discard" data-key="${entry.key}">🗑 Apagar</button>
+			</div>`).join('')}
+		</section>`).join('');
+	return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<style nonce="${nonce}">
+	body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 20px 28px; }
+	h1 { font-size: 20px; margin: 0 0 4px; }
+	.lead { color: var(--vscode-descriptionForeground); margin: 0 0 18px; max-width: 780px; line-height: 1.5; }
+	.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0 14px; background: var(--vscode-editor-background); border-bottom: 1px solid var(--vscode-panel-border); margin-bottom: 14px; }
+	.bar .count { margin-right: auto; font-weight: 600; }
+	button { font: inherit; border-radius: 6px; padding: 6px 12px; cursor: pointer; border: 1px solid transparent; background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+	button:hover { background: var(--vscode-button-hoverBackground); }
+	button:disabled { opacity: .45; cursor: default; }
+	button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+	button.danger-solid { background: #C62828; color: #fff; }
+	button.ghost { background: transparent; color: var(--vscode-foreground); border-color: var(--vscode-panel-border); padding: 4px 10px; }
+	button.ghost:hover { background: var(--vscode-list-hoverBackground); }
+	button.ghost.ok:hover { border-color: #2E7D32; }
+	button.ghost.danger:hover { border-color: #C62828; color: #E57373; }
+	.repo { border: 1px solid var(--vscode-panel-border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+	.repo header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; background: var(--vscode-sideBar-background); }
+	.repo header .muted { margin-right: auto; }
+	.repo-name { font-weight: 600; }
+	.item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--vscode-panel-border); }
+	.item:hover { background: var(--vscode-list-hoverBackground); }
+	.info { flex: 1; min-width: 0; cursor: pointer; }
+	.file { font-family: var(--vscode-editor-font-family); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
+	.empty { text-align: center; padding: 60px 20px; color: var(--vscode-descriptionForeground); }
+	.empty .big { font-size: 42px; }
+	input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--vscode-button-background); }
+</style></head><body>
+<h1>🛡 Quarentena</h1>
+<p class="lead">Arquivos que chegaram do GitHub sem a assinatura do DEV CODE (código que não foi digitado aqui). O aluno pode ver o conteúdo, mas precisa digitar de novo. <b>Liberar</b> pede a senha do administrador do computador (professor), uma vez só para todos os selecionados.</p>
+${entries.length ? `
+<div class="bar">
+	<span class="count" id="count">${entries.length} arquivo(s) em quarentena</span>
+	<label><input type="checkbox" id="all"> Selecionar todos</label>
+	<button id="releaseSel" disabled>✔ Liberar selecionados</button>
+	<button id="discardSel" class="secondary" disabled>🗑 Apagar selecionados</button>
+	<button id="releaseAll">✔ Liberar todos</button>
+	<button id="discardAll" class="danger-solid">🗑 Limpar quarentena</button>
+</div>
+${rows}` : '<div class="empty"><div class="big">✅</div><p>Não há arquivos na quarentena.</p></div>'}
+<script nonce="${nonce}">
+	const vscode = acquireVsCodeApi();
+	const picks = () => [...document.querySelectorAll('.pick')];
+	const chosen = () => picks().filter(p => p.checked).map(p => p.dataset.key);
+	function sync() {
+		const n = chosen().length;
+		for (const id of ['releaseSel', 'discardSel']) { const b = document.getElementById(id); if (b) { b.disabled = !n; } }
+		const c = document.getElementById('count');
+		if (c) { c.textContent = n ? n + ' selecionado(s) de ' + picks().length : picks().length + ' arquivo(s) em quarentena'; }
+	}
+	document.addEventListener('change', e => {
+		if (e.target.id === 'all') { picks().forEach(p => { p.checked = e.target.checked; }); document.querySelectorAll('.all-repo').forEach(p => { p.checked = e.target.checked; }); }
+		if (e.target.classList.contains('all-repo')) { e.target.closest('.repo').querySelectorAll('.pick').forEach(p => { p.checked = e.target.checked; }); }
+		sync();
 	});
-	picker.onDidTriggerItemButton(async event => {
-		const entry = event.item.entry;
-		picker.hide();
+	document.addEventListener('click', e => {
+		const el = e.target.closest('[data-act], button[id]');
+		if (!el) { return; }
+		if (el.id === 'releaseSel') { vscode.postMessage({ type: 'release', keys: chosen() }); }
+		else if (el.id === 'discardSel') { vscode.postMessage({ type: 'discard', keys: chosen() }); }
+		else if (el.id === 'releaseAll') { vscode.postMessage({ type: 'release', keys: picks().map(p => p.dataset.key) }); }
+		else if (el.id === 'discardAll') { vscode.postMessage({ type: 'discard', keys: picks().map(p => p.dataset.key), all: true }); }
+		else if (el.dataset.act === 'trust') { vscode.postMessage({ type: 'trust', root: el.dataset.root }); }
+		else if (el.dataset.act) { vscode.postMessage({ type: el.dataset.act, keys: [el.dataset.key] }); }
+	});
+</script></body></html>`;
+}
+
+function refreshPanel(context) {
+	if (quarantinePanel) { quarantinePanel.webview.html = panelHtml(allEntries(context)); }
+}
+
+async function showQuarantine(context) {
+	if (quarantinePanel) { quarantinePanel.reveal(); refreshPanel(context); return; }
+	quarantinePanel = vscode.window.createWebviewPanel('devcode.quarantine', 'Quarentena', vscode.ViewColumn.Active, { enableScripts: true });
+	quarantinePanel.iconPath = new vscode.ThemeIcon('shield');
+	quarantinePanel.onDidDispose(() => { quarantinePanel = undefined; });
+	quarantinePanel.webview.onDidReceiveMessage(async msg => {
 		try {
-			if (event.button === OPEN_BUTTON) {
-				await openEntry(entry);
-			} else if (event.button === RELEASE_BUTTON) {
-				await releaseEntries(context, [entry], false);
-			} else if (event.button === DISCARD_BUTTON) {
-				discardEntries(context, [entry]);
+			const byKey = new Map(allEntries(context).map(entry => [entry.key, entry]));
+			const list = (msg.keys || []).map(key => byKey.get(key)).filter(Boolean);
+			if (msg.type === 'open') { await openEntry(list[0]); return; }
+			if (msg.type === 'release') {
+				if (list.length) { await releaseEntries(context, list, false); }
+			} else if (msg.type === 'trust') {
+				await releaseEntries(context, [], true, msg.root);
+			} else if (msg.type === 'discard') {
+				if (!list.length) { return; }
+				const ok = await vscode.window.showWarningMessage(
+					msg.all ? `Apagar TODOS os ${list.length} arquivo(s) da quarentena?` : `Apagar ${list.length} arquivo(s) da quarentena?`,
+					{ modal: true, detail: 'Eles saem da quarentena e não voltam para o projeto. Isto não pode ser desfeito.' }, 'Apagar');
+				if (ok === 'Apagar') { discardEntries(context, list); }
 			}
 		} catch (err) {
 			vscode.window.showErrorMessage(`DEV CODE: ${err.message || err}`);
 		}
+		refreshPanel(context);
 	});
-	picker.onDidHide(() => picker.dispose());
-	picker.show();
+	refreshPanel(context);
 }
 
-async function releaseEntries(context, entries, trustSelected) {
+async function releaseEntries(context, entries, trustSelected, rootHint) {
 	if (!entries.length && !trustSelected) {
 		vscode.window.showInformationMessage('Selecione arquivos ou a opção de confiar no repositório.');
 		return false;
@@ -121,7 +218,7 @@ async function releaseEntries(context, entries, trustSelected) {
 	let trustedRoot;
 	if (trustSelected) {
 		const active = vscode.window.activeTextEditor?.document.uri;
-		trustedRoot = active ? vscode.workspace.getWorkspaceFolder(active)?.uri.fsPath : undefined;
+		trustedRoot = rootHint || (active ? vscode.workspace.getWorkspaceFolder(active)?.uri.fsPath : undefined);
 		trustedRoot ||= vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 		if (!trustedRoot || !(await authorship.trustRepo(trustedRoot))) {
 			vscode.window.showErrorMessage('DEV CODE: não foi possível confiar neste repositório porque ele não tem um remote origin.');
@@ -224,6 +321,7 @@ let statusItem;
 let activeContext;
 
 function refreshStatus() {
+	if (activeContext) { refreshPanel(activeContext); }
 	if (!statusItem || !activeContext) { return; }
 	const count = allEntries(activeContext).length;
 	if (!count) { statusItem.hide(); return; }
