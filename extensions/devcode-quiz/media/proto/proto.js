@@ -309,10 +309,15 @@
 			h('button', { class: `tool ${gridsVisible ? 'active' : ''}`, 'data-grid-toggle': '1', onclick: toggleGrids, title: 'Mostrar ou ocultar grades (Ctrl+Shift+4)' }, '\u25A6 Grades'),
 			h('button', { class: 'tool', onclick: openVariables, title: 'Variáveis de cor e número' }, '\u25C6 Variáveis'),
 			h('div', { class: 'spacer' }),
-			h('button', { class: 'tool', onclick: () => zoomBy(1 / 1.2), title: 'Diminuir zoom (-)' }, '−'),
-			zoomEl = h('div', { class: 'zoom' }),
-			h('button', { class: 'tool', onclick: () => zoomBy(1.2), title: 'Aumentar zoom (+)' }, '+'),
-			h('button', { class: 'tool', onclick: fitAll, title: 'Ajustar à tela (Shift+1)' }, '⤢ Ajustar'),
+			h('div', { class: 'tb-right' },
+				h('button', { class: 'tool', onclick: () => zoomBy(1 / 1.2), title: 'Diminuir zoom (-)' }, '−'),
+				zoomEl = h('div', { class: 'zoom' }),
+				h('button', { class: 'tool', onclick: () => zoomBy(1.2), title: 'Aumentar zoom (+)' }, '+'),
+				h('button', { class: 'tool', onclick: fitAll, title: 'Ajustar à tela (Shift+1)' }, '⤢'),
+				h('div', { class: 'sep' }),
+				h('button', { class: 'tool', 'data-panels-toggle': '1', onclick: () => setUiMode(uiMode === 'panels' ? '' : 'panels'), title: 'Ocultar ou mostrar as barras laterais (Ctrl+\\)' }, '◧ Painéis'),
+				h('button', { class: 'tool present-btn', onclick: () => setUiMode('present'), title: 'Apresentar: mostra só o layout, em tela cheia (Ctrl+Enter). Esc sai.' }, '▶ Apresentar'),
+			),
 		);
 		layersEl = h('div', { class: 'panel' });
 		stage = h('div', { class: 'stage' });
@@ -321,7 +326,17 @@
 		hintEl = h('div', { class: 'hint', style: { display: 'none' } });
 		stage.append(world, overlay, hintEl);
 		propsEl = h('div', { class: 'panel right' });
+		const edgeL = h('button', { class: 'edge-tab left', onclick: () => setUiMode(''), title: 'Mostrar as barras laterais (Ctrl+\\)' }, '›');
+		const edgeR = h('button', { class: 'edge-tab right', onclick: () => setUiMode(''), title: 'Mostrar as barras laterais (Ctrl+\\)' }, '‹');
+		const presentBar = h('div', { class: 'present-bar' },
+			h('span', {}, 'Modo apresentação'),
+			h('button', { onclick: fitAll, title: 'Ajustar à tela (Shift+1)' }, '⤢ Ajustar'),
+			h('button', { onclick: () => setUiMode('panels'), title: 'Voltar a barra de ferramentas, sem as barras laterais' }, '◧ Ferramentas'),
+			h('button', { class: 'primary', onclick: () => setUiMode(''), title: 'Sair da apresentação (Esc)' }, '✕ Sair', h('kbd', {}, 'Esc')),
+		);
+		stage.append(edgeL, edgeR, presentBar);
 		app.append(tb, layersEl, stage, propsEl);
+		applyUiMode(false);
 		bindStage();
 		bindLayerDnd();
 	}
@@ -343,6 +358,25 @@
 		hintEl.textContent = hints[t] || '';
 		hintEl.style.display = hints[t] ? '' : 'none';
 	}
+	let uiMode = '';
+	let presentTimer;
+	function setUiMode(mode) { uiMode = mode; applyUiMode(true); }
+	function applyUiMode(refit) {
+		const app = document.getElementById('app');
+		app.classList.toggle('ui-panels', uiMode === 'panels');
+		app.classList.toggle('ui-present', uiMode === 'present');
+		document.querySelector('[data-panels-toggle]')?.classList.toggle('active', uiMode === 'panels');
+		if (uiMode === 'present') { selection.clear(); setTool('select'); wakePresentBar(); }
+		if (refit) { requestAnimationFrame(() => { if (uiMode === 'present') { fitAll(); } else { render(); } }); }
+	}
+	function wakePresentBar() {
+		const bar = document.querySelector('.present-bar');
+		if (!bar) { return; }
+		bar.classList.add('show');
+		clearTimeout(presentTimer);
+		presentTimer = setTimeout(() => { if (!bar.matches(':hover')) { bar.classList.remove('show'); } }, 2500);
+	}
+	window.addEventListener('mousemove', () => { if (uiMode === 'present') { wakePresentBar(); } });
 	function toggleGrids() { gridsVisible = !gridsVisible; vscode.setState?.({ gridsVisible }); document.querySelector('[data-grid-toggle]')?.classList.toggle('active', gridsVisible); render(); }
 
 	// ------------------------------------------------------------------ desenho do documento
@@ -1073,7 +1107,7 @@
 					h('button', { class: 'btn primary', onclick: () => addFrame('mobile') }, '📱 + Frame Mobile'),
 					h('button', { class: 'btn primary', onclick: () => addFrame('desktop') }, '🖥 + Frame Desktop')),
 			), section('Atalhos', h('div', { class: 'empty', style: { whiteSpace: 'pre-line' } },
-				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nCtrl+G agrupar · Ctrl+Shift+G desagrupar\nEnter ou duplo clique numa imagem = modo Cortar · arraste para reposicionar; Esc/Enter conclui\nCtrl+Shift+4 ou ▦ Grades = mostrar/ocultar grades\nAlt+arrastar = desativar encaixe\nClique duplo num grupo = selecionar dentro dele · Esc = voltar ao grupo\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar\nArraste camadas no painel para mudar a ordem ou colocar dentro de frames/grupos\nArraste imagens do Windows Explorer para a tela')));
+				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nCtrl+G agrupar · Ctrl+Shift+G desagrupar\nEnter ou duplo clique numa imagem = modo Cortar · arraste para reposicionar; Esc/Enter conclui\nCtrl+Shift+4 ou ▦ Grades = mostrar/ocultar grades\nCtrl+\ ou ◧ Painéis = ocultar/mostrar as barras laterais\nCtrl+Enter ou ▶ Apresentar = só o layout na tela (Esc sai)\nAlt+arrastar = desativar encaixe\nClique duplo num grupo = selecionar dentro dele · Esc = voltar ao grupo\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar\nArraste camadas no painel para mudar a ordem ou colocar dentro de frames/grupos\nArraste imagens do Windows Explorer para a tela')));
 			return;
 		}
 		if (nodes.length > 1) {
@@ -1541,6 +1575,9 @@
 		if (isTyping(e) || !model) { return; }
 		if (cropMode && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitCrop(); return; }
 		const ctrl = e.ctrlKey || e.metaKey;
+		if (ctrl && (e.key === '\\' || e.code === 'Backslash' || e.code === 'IntlBackslash')) { e.preventDefault(); setUiMode(uiMode ? '' : 'panels'); return; }
+		if (ctrl && e.key === 'Enter') { e.preventDefault(); setUiMode(uiMode === 'present' ? '' : 'present'); return; }
+		if (uiMode === 'present' && e.key === 'Escape') { e.preventDefault(); setUiMode(''); return; }
 		if (ctrl && e.shiftKey && (e.code === 'Digit4' || e.key === '$' || e.key === '4')) { e.preventDefault(); toggleGrids(); return; }
 		if (ctrl && (e.key === 'z' || e.key === 'y' || e.key === 'Z')) { return; } // desfazer/refazer: o próprio editor faz
 		if (ctrl && e.key.toLowerCase() === 'g') { e.preventDefault(); if (e.shiftKey) { ungroupSelected(); } else { groupSelected(); } return; }
