@@ -97,7 +97,7 @@ Se o aluno **errar**, vê a resposta certa, espera alguns segundos e recebe **ou
 ### Modo Protótipo
 O Figma tem muita IA e os alunos acabam copiando telas prontas. No **Protótipo** do DEV CODE o aluno desenha a tela do zero:
 
-- **Apresentar:** o botão azul **▶ Apresentar** (ou Ctrl+Enter) esconde tudo e deixa só o layout na tela, para o aluno mostrar o trabalho. Uma barrinha embaixo aparece ao mexer o mouse, com **Ajustar**, **Ferramentas** e **Sair**. O Esc também sai. O botão **◧ Painéis** (ou Ctrl+\\) esconde só as barras laterais, e as abinhas nas bordas da tela trazem as barras de volta.
+- **Apresentar e painéis:** o botão azul **▶ Apresentar** (ou Ctrl+Enter) deixa só o layout na tela, para o aluno mostrar o trabalho. Embaixo fica uma barrinha com **Ajustar** e **Sair**, e o Esc também sai. Os botões **◧ Camadas** e **◨ Propriedades** (ou Ctrl+Alt+1 e Ctrl+Alt+2) escondem cada barra lateral separada. As abinhas nas bordas também abrem e fecham cada uma. O DEV CODE lembra como o aluno deixou.
 - **Frames:** Mobile (390 × 844) e Desktop (1440 × 900). Um frame novo nunca nasce por cima de outro.
 - **Ferramentas:** Mover `V`, Frame Mobile `F`, Frame Desktop `D`, Retângulo `R`, Elipse `O`, Linha `L`, Texto `T` e **Imagem de qualquer pasta do computador**. A imagem é copiada automaticamente para a pasta `imagens/` do projeto; se já existir outra com o mesmo nome, vira `foto-1.png`, `foto-2.png`…
 - **Arrastar imagens do Windows** (Explorador de Arquivos) direto para a tela: a imagem é copiada para `imagens/` e aparece no ponto onde foi solta, dentro do frame que estiver embaixo.

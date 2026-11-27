@@ -315,8 +315,9 @@
 				h('button', { class: 'tool', onclick: () => zoomBy(1.2), title: 'Aumentar zoom (+)' }, '+'),
 				h('button', { class: 'tool', onclick: fitAll, title: 'Ajustar à tela (Shift+1)' }, '⤢'),
 				h('div', { class: 'sep' }),
-				h('button', { class: 'tool', 'data-panels-toggle': '1', onclick: () => setUiMode(uiMode === 'panels' ? '' : 'panels'), title: 'Ocultar ou mostrar as barras laterais (Ctrl+\\)' }, '◧ Painéis'),
-				h('button', { class: 'tool present-btn', onclick: () => setUiMode('present'), title: 'Apresentar: mostra só o layout, em tela cheia (Ctrl+Enter). Esc sai.' }, '▶ Apresentar'),
+				h('button', { class: 'tool', 'data-side-toggle': 'left', onclick: () => toggleSide('left'), title: 'Ocultar ou mostrar o painel de Camadas (Ctrl+Alt+1)' }, '◧ Camadas'),
+				h('button', { class: 'tool', 'data-side-toggle': 'right', onclick: () => toggleSide('right'), title: 'Ocultar ou mostrar o painel de Propriedades (Ctrl+Alt+2)' }, '◨ Propriedades'),
+				h('button', { class: 'tool present-btn', onclick: () => setPresent(true), title: 'Apresentar: mostra só o layout (Ctrl+Enter). Esc sai.' }, '▶ Apresentar'),
 			),
 		);
 		layersEl = h('div', { class: 'panel' });
@@ -326,16 +327,15 @@
 		hintEl = h('div', { class: 'hint', style: { display: 'none' } });
 		stage.append(world, overlay, hintEl);
 		propsEl = h('div', { class: 'panel right' });
-		const edgeL = h('button', { class: 'edge-tab left', onclick: () => setUiMode(''), title: 'Mostrar as barras laterais (Ctrl+\\)' }, '›');
-		const edgeR = h('button', { class: 'edge-tab right', onclick: () => setUiMode(''), title: 'Mostrar as barras laterais (Ctrl+\\)' }, '‹');
+		// abinhas e barra de apresentação ficam FORA do stage (o stage captura o mouse para arrastar a tela)
+		const edgeL = h('button', { class: 'edge-tab left', 'data-edge': 'left', onclick: () => toggleSide('left') });
+		const edgeR = h('button', { class: 'edge-tab right', 'data-edge': 'right', onclick: () => toggleSide('right') });
 		const presentBar = h('div', { class: 'present-bar' },
 			h('span', {}, 'Modo apresentação'),
 			h('button', { onclick: fitAll, title: 'Ajustar à tela (Shift+1)' }, '⤢ Ajustar'),
-			h('button', { onclick: () => setUiMode('panels'), title: 'Voltar a barra de ferramentas, sem as barras laterais' }, '◧ Ferramentas'),
-			h('button', { class: 'primary', onclick: () => setUiMode(''), title: 'Sair da apresentação (Esc)' }, '✕ Sair', h('kbd', {}, 'Esc')),
+			h('button', { class: 'primary', onclick: () => setPresent(false), title: 'Sair da apresentação (Esc)' }, '✕ Sair', h('kbd', {}, 'Esc')),
 		);
-		stage.append(edgeL, edgeR, presentBar);
-		app.append(tb, layersEl, stage, propsEl);
+		app.append(tb, layersEl, stage, propsEl, edgeL, edgeR, presentBar);
 		applyUiMode(false);
 		bindStage();
 		bindLayerDnd();
@@ -358,16 +358,35 @@
 		hintEl.textContent = hints[t] || '';
 		hintEl.style.display = hints[t] ? '' : 'none';
 	}
-	let uiMode = '';
+	// painéis: cada lado se oculta sozinho; apresentação esconde tudo e volta como estava
+	const savedUi = vscode.getState?.() || {};
+	let hideLeft = !!savedUi.hideLeft, hideRight = !!savedUi.hideRight, presenting = false;
 	let presentTimer;
-	function setUiMode(mode) { uiMode = mode; applyUiMode(true); }
-	function applyUiMode(refit) {
+	function saveUi() { vscode.setState?.({ ...(vscode.getState?.() || {}), gridsVisible, hideLeft, hideRight }); }
+	function toggleSide(side) {
+		if (presenting) { setPresent(false); }
+		if (side === 'left') { hideLeft = !hideLeft; } else { hideRight = !hideRight; }
+		saveUi();
+		applyUiMode(true);
+	}
+	function setPresent(on) {
+		presenting = on;
+		if (on) { selection.clear(); setTool('select'); }
+		applyUiMode(true, on);
+	}
+	function applyUiMode(refresh, refit) {
 		const app = document.getElementById('app');
-		app.classList.toggle('ui-panels', uiMode === 'panels');
-		app.classList.toggle('ui-present', uiMode === 'present');
-		document.querySelector('[data-panels-toggle]')?.classList.toggle('active', uiMode === 'panels');
-		if (uiMode === 'present') { selection.clear(); setTool('select'); wakePresentBar(); }
-		if (refit) { requestAnimationFrame(() => { if (uiMode === 'present') { fitAll(); } else { render(); } }); }
+		const left = hideLeft || presenting, right = hideRight || presenting;
+		app.classList.toggle('hide-left', left);
+		app.classList.toggle('hide-right', right);
+		app.classList.toggle('ui-present', presenting);
+		document.querySelector('[data-side-toggle="left"]')?.classList.toggle('active', hideLeft);
+		document.querySelector('[data-side-toggle="right"]')?.classList.toggle('active', hideRight);
+		const eL = document.querySelector('[data-edge="left"]'), eR = document.querySelector('[data-edge="right"]');
+		if (eL) { eL.textContent = left ? '›' : '‹'; eL.title = left ? 'Mostrar o painel de Camadas' : 'Ocultar o painel de Camadas'; }
+		if (eR) { eR.textContent = right ? '‹' : '›'; eR.title = right ? 'Mostrar o painel de Propriedades' : 'Ocultar o painel de Propriedades'; }
+		if (presenting) { wakePresentBar(); }
+		if (refresh) { requestAnimationFrame(() => { if (refit) { fitAll(); } else { render(); } }); }
 	}
 	function wakePresentBar() {
 		const bar = document.querySelector('.present-bar');
@@ -376,8 +395,8 @@
 		clearTimeout(presentTimer);
 		presentTimer = setTimeout(() => { if (!bar.matches(':hover')) { bar.classList.remove('show'); } }, 2500);
 	}
-	window.addEventListener('mousemove', () => { if (uiMode === 'present') { wakePresentBar(); } });
-	function toggleGrids() { gridsVisible = !gridsVisible; vscode.setState?.({ gridsVisible }); document.querySelector('[data-grid-toggle]')?.classList.toggle('active', gridsVisible); render(); }
+	window.addEventListener('mousemove', () => { if (presenting) { wakePresentBar(); } });
+	function toggleGrids() { gridsVisible = !gridsVisible; saveUi(); document.querySelector('[data-grid-toggle]')?.classList.toggle('active', gridsVisible); render(); }
 
 	// ------------------------------------------------------------------ desenho do documento
 	function nodeStyle(n, offX, offY) {
@@ -1107,7 +1126,7 @@
 					h('button', { class: 'btn primary', onclick: () => addFrame('mobile') }, '📱 + Frame Mobile'),
 					h('button', { class: 'btn primary', onclick: () => addFrame('desktop') }, '🖥 + Frame Desktop')),
 			), section('Atalhos', h('div', { class: 'empty', style: { whiteSpace: 'pre-line' } },
-				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nCtrl+G agrupar · Ctrl+Shift+G desagrupar\nEnter ou duplo clique numa imagem = modo Cortar · arraste para reposicionar; Esc/Enter conclui\nCtrl+Shift+4 ou ▦ Grades = mostrar/ocultar grades\nCtrl+\ ou ◧ Painéis = ocultar/mostrar as barras laterais\nCtrl+Enter ou ▶ Apresentar = só o layout na tela (Esc sai)\nAlt+arrastar = desativar encaixe\nClique duplo num grupo = selecionar dentro dele · Esc = voltar ao grupo\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar\nArraste camadas no painel para mudar a ordem ou colocar dentro de frames/grupos\nArraste imagens do Windows Explorer para a tela')));
+				'V mover · F frame mobile · D frame desktop\nR retângulo · O elipse · L linha · T texto\nDelete apagar · Ctrl+D duplicar\nCtrl+G agrupar · Ctrl+Shift+G desagrupar\nEnter ou duplo clique numa imagem = modo Cortar · arraste para reposicionar; Esc/Enter conclui\nCtrl+Shift+4 ou ▦ Grades = mostrar/ocultar grades\nCtrl+Alt+1 ou ◧ Camadas · Ctrl+Alt+2 ou ◨ Propriedades = ocultar/mostrar cada painel (ou as abinhas nas bordas)\nCtrl+\\ = ocultar/mostrar os dois painéis\nCtrl+Enter ou ▶ Apresentar = só o layout na tela (Esc sai)\nAlt+arrastar = desativar encaixe\nClique duplo num grupo = selecionar dentro dele · Esc = voltar ao grupo\nSetas mover 1px (Shift = 10px)\nCtrl+Z desfazer · Ctrl+Y refazer\nCtrl+roda do mouse = zoom · Espaço+arrastar = mover a tela\nShift+1 ajustar à tela · Duplo clique no texto = editar\nArraste camadas no painel para mudar a ordem ou colocar dentro de frames/grupos\nArraste imagens do Windows Explorer para a tela')));
 			return;
 		}
 		if (nodes.length > 1) {
@@ -1575,9 +1594,16 @@
 		if (isTyping(e) || !model) { return; }
 		if (cropMode && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitCrop(); return; }
 		const ctrl = e.ctrlKey || e.metaKey;
-		if (ctrl && (e.key === '\\' || e.code === 'Backslash' || e.code === 'IntlBackslash')) { e.preventDefault(); setUiMode(uiMode ? '' : 'panels'); return; }
-		if (ctrl && e.key === 'Enter') { e.preventDefault(); setUiMode(uiMode === 'present' ? '' : 'present'); return; }
-		if (uiMode === 'present' && e.key === 'Escape') { e.preventDefault(); setUiMode(''); return; }
+		if (ctrl && e.altKey && (e.code === 'Digit1' || e.code === 'Numpad1')) { e.preventDefault(); toggleSide('left'); return; }
+		if (ctrl && e.altKey && (e.code === 'Digit2' || e.code === 'Numpad2')) { e.preventDefault(); toggleSide('right'); return; }
+		if (ctrl && (e.key === '\\' || e.code === 'Backslash' || e.code === 'IntlBackslash')) {
+			e.preventDefault();
+			if (presenting) { setPresent(false); return; }
+			const both = !(hideLeft && hideRight);
+			hideLeft = both; hideRight = both; saveUi(); applyUiMode(true); return;
+		}
+		if (ctrl && e.key === 'Enter') { e.preventDefault(); setPresent(!presenting); return; }
+		if (presenting && e.key === 'Escape') { e.preventDefault(); setPresent(false); return; }
 		if (ctrl && e.shiftKey && (e.code === 'Digit4' || e.key === '$' || e.key === '4')) { e.preventDefault(); toggleGrids(); return; }
 		if (ctrl && (e.key === 'z' || e.key === 'y' || e.key === 'Z')) { return; } // desfazer/refazer: o próprio editor faz
 		if (ctrl && e.key.toLowerCase() === 'g') { e.preventDefault(); if (e.shiftKey) { ungroupSelected(); } else { groupSelected(); } return; }
