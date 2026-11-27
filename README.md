@@ -190,8 +190,9 @@ O ícone **Cliente de API** na barra lateral testa APIs sem instalar o Postman o
 ### Painel GitHub (estilo GitHub Desktop)
 O ícone do GitHub na barra lateral abre um painel com tudo o que o aluno precisa, sem digitar comandos:
 - **Conta:** entrar e sair (importante nos computadores do laboratório).
+- **Quem está fazendo os commits:** mostra o nome e o e-mail que vão nos commits. No computador compartilhado, o aluno clica em **Trocar** e coloca os dele, assim o commit não sai com o nome de outro aluno.
 - **Projeto aberto:** branch, link do repositório, **⬇ Atualizar (pull)** e **⬆ Enviar (push)** com o número de commits ainda não enviados.
-- **Alterações:** lista dos arquivos modificados, novos e apagados, com caixas para escolher o que entra no commit; clicar no arquivo mostra as diferenças. Escreve a mensagem e clica em **Commit** ou **Commit e enviar**.
+- **Alterações:** lista dos arquivos modificados, novos e apagados, com caixas para escolher o que entra no commit; clicar no arquivo mostra as diferenças. Escreve a mensagem e clica em **Commit** ou **Commit e enviar**. Enquanto o Git trabalha, os botões ficam travados, então clicar duas vezes não dá erro. A pasta `.devcode` nunca entra no commit.
 - **Histórico:** os últimos 20 commits, com autor e data.
 - **Meus repositórios:** lista e filtro dos repositórios da conta, **Baixar** (clone, já liberado no vigia de arquivos) e **Publicar no GitHub** para criar um repositório novo com o projeto aberto.
 

@@ -19,15 +19,15 @@ let extensionPath;
 /** git com rede (clone/push/pull): usa a conta do GitHub logada na IDE, se houver. */
 function gitNet(args, cwd, timeout = 600000) {
 	return new Promise(resolve => cp.execFile('git', args, {
-		cwd, timeout, windowsHide: gh.isLoggedIn(),
+		cwd, timeout, maxBuffer: 64 * 1024 * 1024, windowsHide: gh.isLoggedIn(),
 		env: { ...process.env, ...gh.gitAuthEnv(), ...(gh.isLoggedIn() ? { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' } : {}) },
 	}, (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || err?.message || '') })));
 }
 
-function run(cwd, args, timeout = 300000) {
+function run(cwd, args, timeout = 300000, raw = false) {
 	return new Promise(resolve => {
-		cp.execFile('git', args, { cwd, windowsHide: true, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } },
-			(err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || '').trim(), err: String(stderr || err?.message || '').trim() }));
+		cp.execFile('git', args, { cwd, windowsHide: true, timeout, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } },
+			(err, stdout, stderr) => resolve({ ok: !err, out: raw ? String(stdout || '') : String(stdout || '').trim(), err: String(stderr || err?.message || '').trim() }));
 	});
 }
 
@@ -120,8 +120,41 @@ async function ensureIdentity(repo) {
 	return true;
 }
 
+/** Uma operação do Git por vez (evita clique duplo e index.lock). */
+let busy = false;
+async function exclusive(fn) {
+	if (busy) {
+		vscode.window.setStatusBarMessage('$(sync~spin) DEV CODE: aguarde, o Git ainda está trabalhando…', 3000);
+		return undefined;
+	}
+	busy = true;
+	try { return await fn(); } finally { busy = false; }
+}
+const isBusy = () => busy;
+
+/** Para de versionar a pasta .devcode (registro de autoria é local). */
+async function untrackDevcode(repo) {
+	const tracked = await run(repo, ['ls-files', '--', '.devcode']);
+	if (tracked.ok && tracked.out) { await run(repo, ['rm', '-r', '--cached', '--quiet', '--', '.devcode']); return true; }
+	return false;
+}
+
+/** Nome e e-mail usados nos commits (repositório e computador). */
+async function getIdentity(repo) {
+	const name = (await run(repo, ['config', 'user.name'])).out;
+	const email = (await run(repo, ['config', 'user.email'])).out;
+	return { name, email };
+}
+async function setIdentity(repo, name, email) {
+	for (const scope of ['--global', ...(repo ? ['--local'] : [])]) {
+		await run(repo, ['config', scope, 'user.name', name.trim()]);
+		await run(repo, ['config', scope, 'user.email', email.trim()]);
+	}
+}
+
 /** ☁↑ Enviar: add + commit + push. */
-async function commitAndPush() {
+function commitAndPush() { return exclusive(commitAndPushNow); }
+async function commitAndPushNow() {
 	const repo = currentRepo();
 	if (!repo) {
 		const init = await vscode.window.showInformationMessage('DEV CODE: este projeto ainda não está no Git. Para enviar, crie um repositório vazio no GitHub e cole o link.', 'Conectar ao GitHub');
@@ -142,6 +175,7 @@ async function commitAndPush() {
 		validateInput: v => v.trim().length >= 3 ? undefined : 'Escreva uma mensagem curta descrevendo a mudança',
 	});
 	if (!message) { return; }
+	await untrackDevcode(repo);
 	const add = await run(repo, ['add', '-A']);
 	const commit = add.ok ? await run(repo, ['commit', '-m', message.trim()]) : add;
 	if (!commit.ok) {
@@ -265,10 +299,10 @@ function registerGit(context, { rescan }) {
 	pullItem.command = 'devcode.git.pull';
 	context.subscriptions.push(pushItem, pullItem,
 		vscode.commands.registerCommand('devcode.git.commitPush', commitAndPush),
-		vscode.commands.registerCommand('devcode.git.pull', () => pull(rescan)),
+		vscode.commands.registerCommand('devcode.git.pull', () => exclusive(() => pull(rescan))),
 		vscode.commands.registerCommand('devcode.git.connect', connectRemote),
 	);
 	updateStatusBar();
 }
 
-module.exports = { registerGit, cloneProject, run, gitNet, currentRepo, ensureIdentity, push, pull, connectRemote, gitAvailable, updateStatusBar };
+module.exports = { exclusive, isBusy, untrackDevcode, getIdentity, setIdentity, registerGit, cloneProject, run, gitNet, currentRepo, ensureIdentity, push, pull, connectRemote, gitAvailable, updateStatusBar };
